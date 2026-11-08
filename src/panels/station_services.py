@@ -13,6 +13,7 @@ from vision.diagnostics import save_case
 from vision.regions import reg_scale_for_station
 
 TRADE_DIALOG_TIMEOUT = 15.0
+MARKET_LIST_TIMEOUT = 10.0
 
 
 class TradeDialogUnconfirmedError(Exception):
@@ -84,6 +85,58 @@ class EDStationServicesInShip:
 
         return True
 
+    def market_list_matches(self, selling: bool | None) -> bool:
+        region = reg_scale_for_station(
+            {"rect": [0.125, 0.162, 0.32, 0.201]}, self.screen.screen_width, self.screen.screen_height
+        )
+        image = self.ocr.capture_region_pct(region)
+        recognized = normalize_text(" ".join(self.ocr.image_simple_ocr(image) or []))
+        directions = (False, True) if selling is None else (selling,)
+        expected = {
+            normalize_text(value)
+            for direction in directions
+            for value in self.locale.all_values("STN_SVCS_MARKET_SELL" if direction else "STN_SVCS_MARKET_BUY")
+            if value and value != "?"
+        }
+        matched = bool(recognized) and recognized in expected
+        dialog_title = ""
+        if matched:
+            title_region = reg_scale_for_station(
+                {"rect": [0.265, 0.196, 0.522, 0.243]}, self.screen.screen_width, self.screen.screen_height
+            )
+            title_image = self.ocr.capture_region_pct(title_region)
+            dialog_title = normalize_text(" ".join(self.ocr.image_simple_ocr(title_image) or []))
+            dialog_titles = {
+                normalize_text(value)
+                for key in ("STN_SVCS_BUY_COMMODITY", "STN_SVCS_SELL_COMMODITY")
+                for value in self.locale.all_values(key)
+                if value and value != "?"
+            }
+            matched = dialog_title not in dialog_titles
+        if logger.isEnabledFor(logging.DEBUG):
+            self._market_list_debug_image = image.copy() if not matched else None
+        logger.debug(
+            "Market list check: selling=%s recognized=%r dialog_title=%r matched=%s",
+            selling,
+            recognized,
+            dialog_title,
+            matched,
+        )
+        return matched
+
+    def wait_for_market_list(self, selling: bool | None) -> bool:
+        deadline = monotonic() + MARKET_LIST_TIMEOUT
+        while monotonic() < deadline:
+            if self.market_list_matches(selling):
+                return True
+            sleep(0.25)
+        logger.warning("Market list was not confirmed: selling=%s timeout=%ss", selling, MARKET_LIST_TIMEOUT)
+        if logger.isEnabledFor(logging.DEBUG):
+            image = getattr(self, "_market_list_debug_image", None)
+            if image is not None:
+                save_case("market-list", "unconfirmed", {"heading": image})
+        return False
+
     def select_buy(self, keys) -> bool:
         """Select Buy. Assumes on Commodities Market screen."""
 
@@ -93,21 +146,23 @@ class EDStationServicesInShip:
 
         keys.send("UI_Select")  # Select Buy
 
-        sleep(0.5)  # give time to bring up list
+        if not self.wait_for_market_list(selling=False):
+            return False
         keys.send("UI_Right")  # Go to top of commodities list
         return True
 
     def select_sell(self, keys) -> bool:
-        """Select Buy. Assumes on Commodities Market screen."""
+        """Select Sell. Assumes on Commodities Market screen."""
 
-        # Select Buy
+        # Select Sell
         keys.send("UI_Left", repeat=2)
         keys.send("UI_Up", repeat=4)
 
         keys.send("UI_Down")
         keys.send("UI_Select")  # Select Sell
 
-        sleep(0.5)  # give time to bring up list
+        if not self.wait_for_market_list(selling=True):
+            return False
         keys.send("UI_Right")  # Go to top of commodities list
         return True
 

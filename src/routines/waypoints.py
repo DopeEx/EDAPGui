@@ -495,6 +495,9 @@ class EDWayPoint:
         if not self._wait_for_market_update(previous_timestamp):
             ap.ap_ckb("log", "Timed out waiting for market data. Waypoint Assist stopped.")
             return False
+        if not ap.stn_svcs_in_ship.wait_for_market_list(selling=None):
+            ap.ap_ckb("log", "Could not confirm the commodities market screen. Waypoint Assist stopped.")
+            return False
         return True
 
     def _recover_trade_dialog(
@@ -517,16 +520,27 @@ class EDWayPoint:
         ):
             return False
 
-        if event_type == "MarketSell":
-            ap.stn_svcs_in_ship.select_sell(ap.keys)
-        else:
-            ap.stn_svcs_in_ship.select_buy(ap.keys)
+        select = ap.stn_svcs_in_ship.select_sell if event_type == "MarketSell" else ap.stn_svcs_in_ship.select_buy
+        if not select(ap.keys):
+            logger.warning("Trade list recovery could not confirm the market direction: event=%s", event_type)
+            return False
         logger.debug(
             "Trade dialog recovery ready: event=%s market_id=%s",
             event_type,
             self.market_parser.current_data["MarketID"],
         )
         return True
+
+    def _select_trade_list(self, ap, event_type: str, fleet_carrier: bool, outpost: bool) -> bool:
+        select = ap.stn_svcs_in_ship.select_sell if event_type == "MarketSell" else ap.stn_svcs_in_ship.select_buy
+        if select(ap.keys):
+            return True
+        logger.warning("Market direction not confirmed; reopening market once: event=%s", event_type)
+        previous_timestamp = self.market_parser.current_data["timestamp"]
+        if self._recover_trade_dialog(ap, event_type, fleet_carrier, outpost, previous_timestamp):
+            return True
+        ap.ap_ckb("log", "Could not confirm the requested market list. Waypoint Assist stopped before trading.")
+        return False
 
     def _confirmed_trade(
         self,
@@ -813,7 +827,9 @@ class EDWayPoint:
             # --------- SELL ----------
             if len(sell_commodities) > 0:
                 # Select the SELL option
-                self.ap.stn_svcs_in_ship.select_sell(ap.keys)
+                if not self._select_trade_list(ap, "MarketSell", fleet_carrier, outpost):
+                    ap.ship_control.goto_cockpit_view(timeout=COCKPIT_VIEW_TIMEOUT)
+                    return False
 
                 for i, key in enumerate(sell_commodities):
                     if sell_commodities[key] <= 0:
@@ -898,7 +914,9 @@ class EDWayPoint:
             # --------- BUY ----------
             if len(buy_commodities) > 0 or len(global_buy_commodities) > 0:
                 # Select the BUY option
-                self.ap.stn_svcs_in_ship.select_buy(ap.keys)
+                if not self._select_trade_list(ap, "MarketBuy", fleet_carrier, outpost):
+                    ap.ship_control.goto_cockpit_view(timeout=COCKPIT_VIEW_TIMEOUT)
+                    return False
 
                 # Go through buy commodities list
                 for i, key in enumerate(buy_commodities):

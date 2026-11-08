@@ -519,6 +519,23 @@ class TradeDiagnosticsTestCase(unittest.TestCase):
         wp.ap.ap_ckb.assert_any_call("log", "Timed out waiting for market data. Waypoint Assist stopped.")
         self.assertEqual(wp.waypoints["1"]["BuyCommodities"], {"128049197": 2})
 
+    def test_unconfirmed_market_screen_prevents_list_navigation(self):
+        wp = new_waypoints({"GlobalShoppingList": GLOBAL_LIST, "1": stop("Sol", BuyCommodities={"128049197": 2})})
+        wp.ap = mock.Mock()
+        wp.ap.jn.ship_state.return_value = {
+            "cur_station": "Test Station",
+            "cur_station_type": "Coriolis",
+            "StationServices": ["commodities"],
+        }
+        wp.ap.stn_svcs_in_ship.wait_for_market_list.return_value = False
+        wp.market_parser = mock.Mock()
+        wp.market_parser.current_data = {"timestamp": "old"}
+        with mock.patch.object(wp, "_wait_for_market_update", return_value=True):
+            self.assertFalse(wp.execute_trade(wp.ap, "1"))
+        wp.ap.stn_svcs_in_ship.select_buy.assert_not_called()
+        wp.ap.stn_svcs_in_ship.buy_commodity.assert_not_called()
+        wp.ap.ap_ckb.assert_any_call("log", "Could not confirm the commodities market screen. Waypoint Assist stopped.")
+
 
 class TradeConfirmationTestCase(unittest.TestCase):
     def setUp(self):
@@ -639,6 +656,38 @@ class TradeConfirmationTestCase(unittest.TestCase):
             cockpit_timeout=10.0,
         )
         self.ap.stn_svcs_in_ship.select_sell.assert_called_once_with(self.ap.keys)
+
+    def test_market_direction_failure_reopens_once_or_stops(self):
+        for event, method in (("MarketSell", "select_sell"), ("MarketBuy", "select_buy")):
+            for recovered in (False, True):
+                with self.subTest(event=event, recovered=recovered):
+                    self.ap.reset_mock()
+                    getattr(self.ap.stn_svcs_in_ship, method).return_value = False
+                    with mock.patch.object(self.wp, "_recover_trade_dialog", return_value=recovered) as recover:
+                        self.assertEqual(self.wp._select_trade_list(self.ap, event, False, False), recovered)
+                    recover.assert_called_once_with(self.ap, event, False, False, "old")
+                    if not recovered:
+                        self.ap.ap_ckb.assert_called_once_with(
+                            "log",
+                            "Could not confirm the requested market list. Waypoint Assist stopped before trading.",
+                        )
+
+    def test_recovery_fails_when_requested_market_direction_is_unconfirmed(self):
+        self.ap.stn_svcs_in_ship.select_sell.return_value = False
+        with mock.patch.object(self.wp, "_open_station_market", return_value=True):
+            self.assertFalse(self.wp._recover_trade_dialog(self.ap, "MarketSell", False, False, "old"))
+
+    def test_unconfirmed_market_direction_never_sends_trade_inputs(self):
+        for event, method in (("MarketSell", "select_sell"), ("MarketBuy", "select_buy")):
+            with self.subTest(event=event):
+                self.ap.reset_mock()
+                self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 2} if event == "MarketSell" else {}
+                self.wp.waypoints["1"]["BuyCommodities"] = {"128049197": 2} if event == "MarketBuy" else {}
+                getattr(self.ap.stn_svcs_in_ship, method).return_value = False
+                with mock.patch.object(self.wp, "_recover_trade_dialog", return_value=False):
+                    self.assertFalse(self.wp.execute_trade(self.ap, "1"))
+                self.ap.stn_svcs_in_ship.sell_commodity.assert_not_called()
+                self.ap.stn_svcs_in_ship.buy_commodity.assert_not_called()
 
     def test_fleet_carrier_transfer_requires_all_sentinel_and_aborts_when_unconfirmed(self):
         state = self.ap.jn.ship_state.return_value

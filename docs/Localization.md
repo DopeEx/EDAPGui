@@ -70,6 +70,8 @@ The key order does not matter. One value may be a string or a list of genuine al
 Partial files are accepted with explicit English fallback warnings. Empty values, placeholder `?` values,
 unknown keys and duplicate JSON keys are errors, not working translations. Invalid additional packs are reported
 and excluded from the selector without preventing the valid packs from loading. The English base pack is required.
+`STN_SVCS_MARKET_BUY` and `STN_SVCS_MARKET_SELL` are the headings above the active market goods list, not the
+labels of its navigation buttons or the heading of a commodity dialog.
 
 ### `commodities.json`
 
