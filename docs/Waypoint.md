@@ -215,6 +215,9 @@ Leave it disabled if you only want the trades listed at individual stops.
 
 ### Trade safety and interruptions
 
+Before navigating goods, the assist checks the market list heading for the requested buy or sell direction.
+If the market screen itself cannot be confirmed, it stops without trading. If the requested direction cannot be
+confirmed, it reopens the market once and stops without trading if the direction remains unconfirmed.
 The assist matches the requested ID to the current market, then checks the game's actual localized commodity
 name and whether the dialog is buying or selling before submitting a trade. An English catalogue fallback is only
 a display fallback; it never replaces the current market's identity or name.

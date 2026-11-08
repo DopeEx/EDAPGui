@@ -40,6 +40,80 @@ class StationServicesTestCase(unittest.TestCase):
         return services
 
 
+class MarketListSafetyTestCase(unittest.TestCase):
+    def setUp(self):
+        self.services = StationServicesTestCase.make_services("en")
+        self.services.ocr.capture_region_pct.return_value = mock.Mock()
+
+    def test_heading_requires_exact_expected_direction_and_active_language(self):
+        for language, words, expected_sell, expected_buy in (
+            ("en", ["SELL", "TO", "MARKET"], True, False),
+            ("en", ["BUY", "FROM MARKET"], False, True),
+            ("de", ["AM", "MARKT VERKAUFEN"], True, False),
+            ("de", ["AM MARKT", "KAUFEN"], False, True),
+            ("en", ["BUY", "FROM", "MARKET", "SELL"], False, False),
+            ("en", ["AM MARKT KAUFEN"], False, False),
+            ("en", [], False, False),
+        ):
+            with self.subTest(language=language, words=words):
+                self.services.locale = LocalizationManager(str(paths.LOCALES_DIR), language)
+                self.services.ocr.image_simple_ocr.return_value = words
+                self.assertEqual(self.services.market_list_matches(True), expected_sell)
+                self.assertEqual(self.services.market_list_matches(False), expected_buy)
+                self.assertEqual(self.services.market_list_matches(None), expected_sell or expected_buy)
+
+    def test_visible_commodity_dialog_rejects_background_list_heading(self):
+        for title in ("BUY COMMODITY", "SELL COMMODITY"):
+            with self.subTest(title=title):
+                self.services.ocr.image_simple_ocr.side_effect = [["BUY FROM MARKET"], [title]]
+                self.assertFalse(self.services.market_list_matches(False))
+
+    def test_selection_only_enters_goods_list_after_matching_heading(self):
+        for selling in (False, True):
+            for matched in (False, True):
+                with self.subTest(selling=selling, matched=matched):
+                    self.services.keys.reset_mock()
+                    with mock.patch.object(self.services, "wait_for_market_list", return_value=matched) as wait:
+                        select = self.services.select_sell if selling else self.services.select_buy
+                        self.assertEqual(select(self.services.keys), matched)
+                    wait.assert_called_once_with(selling=selling)
+                    calls = [call.args[0] for call in self.services.keys.send.call_args_list]
+                    self.assertEqual("UI_Right" in calls, matched)
+
+    def test_timeout_records_only_debug_diagnostics(self):
+        with (
+            mock.patch.object(self.services, "market_list_matches", return_value=False),
+            mock.patch("panels.station_services.monotonic", side_effect=[0, 0, 11]),
+            mock.patch("panels.station_services.sleep"),
+            mock.patch("panels.station_services.save_case") as save,
+            self.assertLogs("ed_log", level="WARNING"),
+        ):
+            self.assertFalse(self.services.wait_for_market_list(True))
+        save.assert_not_called()
+
+    def test_wait_for_market_list_accepts_a_later_matching_heading(self):
+        with (
+            mock.patch.object(self.services, "market_list_matches", side_effect=[False, True]) as matches,
+            mock.patch("panels.station_services.monotonic", side_effect=[0, 0, 1]),
+            mock.patch("panels.station_services.sleep"),
+        ):
+            self.assertTrue(self.services.wait_for_market_list(True))
+        self.assertEqual(matches.call_count, 2)
+
+    def test_timeout_records_heading_only_when_debug_is_enabled(self):
+        image = mock.Mock()
+        self.services._market_list_debug_image = image
+        with (
+            mock.patch.object(self.services, "market_list_matches", return_value=False),
+            mock.patch("panels.station_services.monotonic", side_effect=[0, 0, 11]),
+            mock.patch("panels.station_services.sleep"),
+            mock.patch("panels.station_services.logger.isEnabledFor", return_value=True),
+            mock.patch("panels.station_services.save_case") as save,
+        ):
+            self.assertFalse(self.services.wait_for_market_list(True))
+        save.assert_called_once_with("market-list", "unconfirmed", {"heading": image})
+
+
 class TradeDialogSafetyTestCase(unittest.TestCase):
     def setUp(self):
         self.services = StationServicesTestCase.make_services("en")

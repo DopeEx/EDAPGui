@@ -11,6 +11,7 @@ none. The file names tell what is expected:
  - station-services: OCR recognizes the localized header in each provided color scheme
  - galaxy-map: OCR recognizes the map header in each provided color scheme
  - trade-buy / trade-sell: the modal commodity and transaction direction match; background goods do not
+ - market-list: the active buy/sell list heading matches, independently of focus and details
  - nav-panel: the selected system/navigation/transactions/contacts tab is identified in both color schemes
  - internal-panel: the selected right-panel tab, including icon tabs, is identified in both color schemes
 Screenshots whose names contain "crop" or "head-turned" are ignored.
@@ -46,6 +47,7 @@ IGNORED = ("crop", "head-turned")
 ALIGNMENT_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*jump-align-msg*.png")))
 STATION_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*station-services*.png")))
 TRADE_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*trade-*.png")))
+MARKET_LIST_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*market-list*.png")))
 GALAXY_MAP_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*galaxy-map*.png")))
 NAV_PANEL_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*nav-panel*.png")))
 INTERNAL_PANEL_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*internal-panel*.png")))
@@ -251,6 +253,32 @@ class GalaxyMapScreenshotTestCase(unittest.TestCase):
                 recognition.assert_called_once()
                 poll.assert_called_once()
                 self.assertIn("UI_Up", [call.args[0] for call in galaxy.keys.send.call_args_list])
+
+
+@skipUnless(OCR is not None and MARKET_LIST_SCREENSHOTS, "PaddleOCR or local market-list screenshots unavailable")
+class MarketListScreenshotTestCase(unittest.TestCase):
+    def test_heading_identifies_list_direction_in_both_languages_and_color_schemes(self):
+        engines = {}
+        for path in MARKET_LIST_SCREENSHOTS:
+            with self.subTest(screenshot=path.name):
+                ocr = screenshot_ocr(path, engines)
+                services = EDStationServicesInShip.__new__(EDStationServicesInShip)
+                services.locale = LocalizationManager(str(paths.LOCALES_DIR), screenshot_language(path))
+                services.screen = ScreenshotScreen(load_screenshot(path))
+                services.ocr = ocr
+                ocr.screen = services.screen
+                selling = "sell" in path.stem.split("_")
+                self.assertTrue(services.market_list_matches(selling))
+                self.assertFalse(services.market_list_matches(not selling))
+
+        for path in TRADE_SCREENSHOTS:
+            with self.subTest(open_dialog=path.name):
+                ocr = screenshot_ocr(path, engines)
+                services.locale = LocalizationManager(str(paths.LOCALES_DIR), screenshot_language(path))
+                services.screen = ScreenshotScreen(load_screenshot(path))
+                services.ocr = ocr
+                ocr.screen = services.screen
+                self.assertFalse(services.market_list_matches(None))
 
 
 @skipUnless(OCR is not None and TRADE_SCREENSHOTS, "PaddleOCR or local trade-dialog screenshots unavailable")
