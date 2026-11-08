@@ -53,6 +53,7 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
   Dim cockpit highlights, including shaded default-orange highlights, use a bounded color-brightness fallback when normal detection fails.
   Compass marker fallback handles dim HUD markers and hollow markers touching the compass rim,
   with size checks scaled to the compass sphere.
+  Visible target rings tolerate small size variations without lowering the detection threshold.
 
 See the [waypoint guide](docs/Waypoint.md) for waypoint files and trade actions, and the
 [ship tuning guide](docs/RollPitchYaw.md) for roll, pitch, and yaw rates.
