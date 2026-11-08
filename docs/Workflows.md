@@ -132,6 +132,12 @@ Occluded-target detection checks white and beige dashed rings with their existin
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight
 ring-size variation at the same screen resolution. Bright surfaces alone do not qualify as a ring.
 
+Visible-target detection also checks templates 5% smaller and larger, but only when the native template falls
+below the existing match threshold. All variants reuse the same filtered capture. Alignment uses the circle
+center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
+path so a recognized visible ring is not treated as missing. Targets obscured by cockpit structure or other
+HUD elements can still require compass realignment.
+
 Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers
 are checked separately so a behind marker is not mistaken for an ahead dot. A rejected filled-template match

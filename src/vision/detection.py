@@ -515,7 +515,7 @@ class DetectionMixin:
         target circle is not shown. This is the case when the target is behind a planet in front of a very
         bright sun, or while the game shows the 'move to obtain line of sight' message (Supercruise Assist).
         @return: True if the target is occluded."""
-        _, (_, target_val, _, _), _ = scr_reg.match_template_in_region("target", "target", inv_col=False)
+        _, (_, target_val, _, _), _ = scr_reg.match_target_multiscale()
         if target_val >= scr_reg.target_thresh:
             return False  # target circle is visible
 
@@ -574,10 +574,7 @@ class DetectionMixin:
         (in this case the specified region)."""
         captured = []
         self._target_debug_capture = None
-        dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region(
-            "target",
-            "target",
-            inv_col=False,
+        dst_image, (minVal, maxVal, minLoc, maxLoc), template = scr_reg.match_target_multiscale(
             source_callback=(lambda image: captured.append((datetime.now(), image)))
             if logger.isEnabledFor(logging.DEBUG)
             else None,
@@ -591,12 +588,16 @@ class DetectionMixin:
         destination_width = scr_reg.reg["target"]["width"]
         destination_height = scr_reg.reg["target"]["height"]
 
-        width = scr_reg.templates.template["target"]["width"]
-        height = scr_reg.templates.template["target"]["height"]
+        height, width = template.shape
 
         # The target is aligned when the center of its circle is at the center of the screen. The template is only
         # an arc, so use the circle center (anchor) instead of the center of the template.
         anchor_x, anchor_y = scr_reg.templates.template["target"]["anchor"]
+        native = scr_reg.templates.template["target"]
+        if template is not native["image"]:
+            # Resize maps pixel centers, not pixel corners; use the actual rounded output dimensions.
+            anchor_x = (anchor_x + 0.5) * width / native["width"] - 0.5
+            anchor_y = (anchor_y + 0.5) * height / native["height"] - 0.5
         region_left, region_top = scr_reg.reg["target"]["rect"][:2]
         final_x = (pt[0] + anchor_x) - (scr_reg.screen.screen_width / 2 - region_left)
         final_y = (scr_reg.screen.screen_height / 2 - region_top) - (pt[1] + anchor_y)
@@ -632,7 +633,8 @@ class DetectionMixin:
         diagnostics = (
             f"roi={roi_width}x{roi_height}, filter_pixels={filter_pixels}/{roi_pixels} "
             f"({filter_pixels / roi_pixels:.2%}), template={width}x{height}, "
-            f"score={maxVal:.4f}, threshold={scr_reg.target_thresh:.2f}"
+            f"score={maxVal:.4f}, threshold={scr_reg.target_thresh:.2f}, "
+            f"scale={width / native['width']:.3f}x{height / native['height']:.3f}"
         )
         if maxVal < scr_reg.target_thresh:
             result = None

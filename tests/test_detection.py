@@ -348,6 +348,98 @@ class CompassTestCase(MatchingTestCase):
 
 
 class TargetTestCase(MatchingTestCase):
+    def test_scaled_target_has_the_correct_circle_center_and_is_not_hidden(self):
+        for height in (1080, 2160):
+            templates = ImageTemplates(height)
+            native = templates.template["target"]
+            for scale in (0.95, 1.05):
+                target = cv2.resize(native["image"], None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                for hsv in ((20, 200, 240), (40, 200, 240)):
+                    with self.subTest(height=height, scale=scale, hsv=hsv):
+                        image = np.zeros((700, 700, 3), np.uint8)
+                        color = cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2BGR)[0, 0]
+                        image[100 : 100 + target.shape[0], 200 : 200 + target.shape[1]][target > 128] = color
+                        screen = FakeScreen(image, width=height * 16 // 9, height=height)
+                        regions = ScreenRegions(screen, templates)
+                        # Clean synthetic arcs can pass the native threshold; force the size fallback here.
+                        regions.target_thresh = 0.8
+                        _, result, selected = regions.match_target_multiscale()
+                        self.assertGreaterEqual(result[1], regions.target_thresh)
+                        self.assertEqual(selected.shape, target.shape)
+                        offset = Detector().get_destination_offset(regions)
+                        anchor_x, anchor_y = native["anchor"]
+                        expected_x = (
+                            200
+                            + (anchor_x + 0.5) * target.shape[1] / native["width"]
+                            - 0.5
+                            - (screen.screen_width / 2 - regions.reg["target"]["rect"][0])
+                        )
+                        expected_y = (
+                            screen.screen_height / 2
+                            - regions.reg["target"]["rect"][1]
+                            - (100 + (anchor_y + 0.5) * target.shape[0] / native["height"] - 0.5)
+                        )
+                        self.assertAlmostEqual(offset["x"], expected_x, delta=2)
+                        self.assertAlmostEqual(offset["y"], expected_y, delta=2)
+                        detector = Detector()
+                        with patch.object(detector, "have_destination") as have:
+                            self.assertFalse(detector.is_destination_hidden_ahead(regions))
+                            have.assert_not_called()
+
+    def test_native_target_keeps_priority_and_scaled_matches_reuse_one_capture(self):
+        regions = self.regions("target")
+        with (
+            patch.object(regions.screen, "get_screen_region", wraps=regions.screen.get_screen_region) as capture,
+            patch("vision.regions.cv2.resize", wraps=cv2.resize) as resize,
+        ):
+            _, result, selected = regions.match_target_multiscale()
+        self.assertGreaterEqual(result[1], regions.target_thresh)
+        self.assertIs(selected, self.templates.template["target"]["image"])
+        capture.assert_called_once()
+        resize.assert_not_called()
+        regions = self.regions("empty")
+        callback = Mock()
+        with patch.object(
+            regions.screen, "get_screen_region_with_context", wraps=regions.screen.get_screen_region_with_context
+        ) as capture:
+            with patch("vision.regions.logger.isEnabledFor", return_value=True):
+                regions.match_target_multiscale(source_callback=callback)
+        capture.assert_called_once()
+        callback.assert_called_once()
+
+    def test_local_target_size_variations_are_detected(self):
+        folder = FIXTURES / "screenshots" / "2160p"
+        names = (
+            "151_crop_target-size-variation_en.png",
+            "152_crop_target-size-variation_en.png",
+            "153_crop_target-size-overlap_en.png",
+        )
+        available = [name for name in names if (folder / name).exists()]
+        if not available:
+            self.skipTest("local target size-variation crops unavailable")
+        for name in available:
+            with self.subTest(screenshot=name):
+                path = folder / name
+                image = load_screenshot(path)
+                regions = ScreenRegions(FakeScreen(image, width=3840, height=2160), self.templates)
+                _, native, _ = regions.match_template_in_region("target", "target", inv_col=False)
+                self.assertLess(native[1], regions.target_thresh)
+                _, result, selected = regions.match_target_multiscale()
+                self.assertGreater(result[1], 0.7)
+                self.assertEqual(selected.shape, (201, 174))
+                self.assertIsNotNone(Detector().get_destination_offset(regions))
+
+    def test_text_and_unselected_circles_are_not_targets(self):
+        for scene in ("text", "circle"):
+            with self.subTest(scene=scene):
+                image = np.zeros((700, 700, 3), np.uint8)
+                if scene == "text":
+                    cv2.putText(image, "DYSON ENTERPRISE", (80, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 240), 2)
+                else:
+                    cv2.circle(image, (300, 300), 100, (0, 200, 240), 2)
+                regions = ScreenRegions(FakeScreen(image), self.templates)
+                self.assertIsNone(Detector().get_destination_offset(regions))
+
     def test_target_circle_is_found_and_offset(self):
         offset = self.detect("get_destination_offset", "target")
 
