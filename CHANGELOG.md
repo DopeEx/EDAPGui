@@ -66,6 +66,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - FSD retries realign before charging again, and target alignment accounts for configured ship turn rates to reduce overshooting.
 - Compass alignment no longer steers blindly when its target is unreadable or repeatedly pitches past targets at the compass rim.
 - Supercruise disengage detection continues when the target ring is lost or becomes an open arc near arrival.
+- Interdiction recovery waits for confirmed supercruise before realigning, avoiding assist aborts during the jump transition; an unconfirmed return stops with an error after a bounded wait.
 - Discovery scans no longer end after a fixed delay or get cut short by another action sharing the same key.
 - Starting in open space no longer fails because station details are missing.
 - Screen capture and target detection now work correctly across monitors with different Windows scaling.
