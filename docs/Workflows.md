@@ -16,8 +16,11 @@ This document summarizes the behavior currently implemented and lists a small nu
    it stops at the destination.
 5. For a local target, it undocks or enters supercruise if needed, aligns using the navigation compass, and repeatedly
    aligns using screen detection while watching for the supercruise disengage prompt.
-   When the target is occluded, it attempts a repositioning maneuver; it also checks for interdiction and realigns
-   afterward.
+   When the target is occluded, it attempts a repositioning maneuver; it also checks for interdiction, submits,
+   and attempts to escape back into supercruise. Recovery waits for both the supercruise status flag and the journal's
+   `in_supercruise` state before realigning; the jump-transition flag alone is not sufficient.
+   If arrival is not confirmed within 60 seconds of requesting supercruise after cooldown, the assist stops with an
+   error. This recovery also applies to Waypoint Assist.
 6. On disengagement, it checks whether docking is possible and whether the destination supports docking. When
    applicable, it approaches, requests docking through the Navigation panel, and waits for the docking computer.
    It confirms panel focus and the selected Contacts tab before sending the docking inputs. Tab changes are sent

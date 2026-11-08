@@ -15,6 +15,8 @@ import cv2
 import numpy as np
 
 from core import paths
+from core.constants import FlagsBeingInterdicted, FlagsFsdJump, FlagsSupercruise
+from core.types import EdapInterruptError
 from gui.cv_view import CvFrames
 from routines.flight import FlightMixin
 from tests.helpers import FIXTURES, FakeScreen, load_fixture_image, load_screenshot, pad_to_region
@@ -26,6 +28,112 @@ from vision.templates import ImageTemplates
 class Detector(DetectionMixin):
     def __init__(self):
         self.cv_frames = CvFrames()
+
+
+class InterdictionTestCase(unittest.TestCase):
+    def detector(self):
+        detector = Detector()
+        detector.status = Mock()
+        detector.status.get_flag.side_effect = lambda flag: flag in (FlagsBeingInterdicted, FlagsFsdJump)
+        detector.status.get_flag2.return_value = False
+        detector.status.wait_for_flag_off.return_value = True
+        detector.jn = Mock()
+        detector.jn.ship_state.return_value = {"status": "starting_supercruise", "interdicted": True}
+        detector.keys = Mock()
+        detector.vce = Mock()
+        detector.ap_ckb = Mock()
+        detector.start_sco_monitoring = Mock()
+        return detector
+
+    def test_no_interdiction_sends_no_inputs(self):
+        detector = self.detector()
+        detector.status.get_flag.return_value = False
+        detector.status.get_flag.side_effect = None
+        self.assertFalse(detector.interdiction_check())
+        detector.keys.send.assert_not_called()
+        detector.jn.ship_state.assert_not_called()
+
+    def test_waits_for_journal_after_supercruise_flag(self):
+        detector = self.detector()
+        supercruise = iter([False, True, True, True])
+        detector.status.get_flag.side_effect = lambda flag: next(supercruise) if flag == FlagsSupercruise else True
+        arriving = {"status": "starting_supercruise", "interdicted": True}
+        arrived = {"status": "in_supercruise", "interdicted": True}
+        detector.jn.ship_state.side_effect = [arriving, arriving, arrived]
+        with patch("vision.detection.sleep") as sleep:
+            self.assertTrue(detector.interdiction_check())
+        self.assertTrue(arriving["interdicted"])
+        self.assertFalse(arrived["interdicted"])
+        self.assertEqual(detector.jn.ship_state.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertNotIn(("UseBoostJuice",), [call.args for call in detector.keys.send.call_args_list])
+
+    def test_waits_for_supercruise_flag_after_journal(self):
+        detector = self.detector()
+        supercruise = iter([False, False, True])
+        detector.status.get_flag.side_effect = lambda flag: next(supercruise) if flag == FlagsSupercruise else True
+        detector.jn.ship_state.return_value["status"] = "in_supercruise"
+        with patch("vision.detection.sleep") as sleep:
+            self.assertTrue(detector.interdiction_check())
+        sleep.assert_called_once_with(0.25)
+        self.assertFalse(detector.jn.ship_state.return_value["interdicted"])
+
+    def test_unconfirmed_supercruise_times_out_without_resetting_interdiction(self):
+        for journal_ready, status_ready in ((False, False), (False, True), (True, False)):
+            with self.subTest(journal_ready=journal_ready, status_ready=status_ready):
+                detector = self.detector()
+                supercruise = iter([False, status_ready])
+                detector.status.get_flag.side_effect = lambda flag: (
+                    next(supercruise) if flag == FlagsSupercruise else flag == FlagsBeingInterdicted
+                )
+                if journal_ready:
+                    detector.jn.ship_state.return_value["status"] = "in_supercruise"
+                with (
+                    patch("vision.detection.time.monotonic", side_effect=[0, 0, 60]),
+                    patch("vision.detection.sleep"),
+                    self.assertLogs("ed_log", level="WARNING"),
+                    self.assertRaisesRegex(TimeoutError, "supercruise after interdiction"),
+                ):
+                    detector.interdiction_check()
+                self.assertTrue(detector.jn.ship_state.return_value["interdicted"])
+                detector.ap_ckb.assert_any_call(
+                    "log", "Could not confirm supercruise after interdiction. Assist stopped."
+                )
+                if not status_ready:
+                    detector.keys.send.assert_any_call("UseBoostJuice")
+
+    def test_boosts_only_until_transition_starts(self):
+        detector = self.detector()
+        supercruise = iter([False, False, False, True, True])
+        jumping = iter([False, True])
+
+        def flag_set(flag):
+            if flag == FlagsSupercruise:
+                return next(supercruise)
+            if flag == FlagsFsdJump:
+                return next(jumping)
+            return flag == FlagsBeingInterdicted
+
+        detector.status.get_flag.side_effect = flag_set
+        arriving = {"status": "starting_supercruise", "interdicted": True}
+        arrived = {"status": "in_supercruise", "interdicted": True}
+        detector.jn.ship_state.side_effect = [arriving, arriving, arriving, arrived]
+        with patch("vision.detection.sleep") as sleep:
+            self.assertTrue(detector.interdiction_check())
+        self.assertEqual([call.args for call in sleep.call_args_list], [(1,), (0.25,), (0.25,)])
+        self.assertEqual(
+            [call.args for call in detector.keys.send.call_args_list],
+            [("SetSpeed100",), ("Supercruise",), ("UseBoostJuice",)],
+        )
+
+    def test_stop_interrupt_propagates_during_recovery(self):
+        detector = self.detector()
+        with (
+            patch("vision.detection.sleep", side_effect=EdapInterruptError),
+            self.assertRaises(EdapInterruptError),
+        ):
+            detector.interdiction_check()
+        self.assertTrue(detector.jn.ship_state.return_value["interdicted"])
 
 
 class MatchingTestCase(unittest.TestCase):

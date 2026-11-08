@@ -21,6 +21,8 @@ from core.logger import logger
 from i18n.localization import normalize_text
 from vision.diagnostics import save_case
 
+INTERDICTION_SC_TIMEOUT = 60.0
+
 
 class DetectionMixin:
     def show_cv_image(self, name, image):
@@ -81,14 +83,24 @@ class DetectionMixin:
         # Start SCO monitoring
         self.start_sco_monitoring()
 
-        # Wait for jump to supercruise, keep boosting.
-        while not self.status.get_flag(FlagsFsdJump):
-            self.keys.send("UseBoostJuice")
-            sleep(1)
+        # FsdJump marks the transition, not arrival; alignment also needs the journal to catch up.
+        deadline = time.monotonic() + INTERDICTION_SC_TIMEOUT
+        while time.monotonic() < deadline:
+            ship = self.jn.ship_state()
+            in_supercruise = self.status.get_flag(FlagsSupercruise)
+            if in_supercruise and ship["status"] == "in_supercruise":
+                ship["interdicted"] = False
+                return True
+            if not in_supercruise and not self.status.get_flag(FlagsFsdJump):
+                self.keys.send("UseBoostJuice")
+                sleep(1)
+            else:
+                sleep(0.25)
 
-        # Update journal flag.
-        self.jn.ship_state()["interdicted"] = False  # reset flag
-        return True
+        message = "Could not confirm supercruise after interdiction. Assist stopped."
+        logger.warning(message)
+        self.ap_ckb("log", message)
+        raise TimeoutError("Could not confirm supercruise after interdiction")
 
     @staticmethod
     def fit_compass_ring(image, approx_center, radius):
