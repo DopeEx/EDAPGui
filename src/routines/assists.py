@@ -12,6 +12,7 @@ IN_SYSTEM_TARGET_TIMEOUT = 5.0
 IN_SYSTEM_TARGET_POLL_INTERVAL = 0.25
 SYSTEM_ARRIVAL_TIMEOUT = 10.0
 ROUTE_TARGET_TIMEOUT = 5.0
+AFK_COMBAT_POLL_INTERVAL = 0.5
 
 
 class AssistsMixin:
@@ -481,24 +482,43 @@ class AssistsMixin:
         completion_message = "Travel Assist complete" if self.travel_assist_enabled else "Supercruise Assist complete"
         self.ap_ckb("log+vce", completion_message)
 
-    # Simply monitor for Shields down so we can boost away or our fighter got destroyed
-    # and thus redeploy another one
     def afk_combat_loop(self):
+        self.set_ap_status("Monitoring shields")
+        initial_state = True
         while True:
-            if not self.afk_combat.check_shields_up():
+            ship_state = self.jn.ship_state()
+            if initial_state:
+                logger.debug(
+                    "AFK combat started: status=%s, shieldsup=%s, fighter_destroyed=%s",
+                    ship_state["status"],
+                    ship_state["shieldsup"],
+                    ship_state["fighter_destroyed"],
+                )
+                initial_state = False
+            if not self.afk_combat.check_shields_up(ship_state):
+                logger.debug("AFK combat: shields down, starting evasion")
+                self.set_ap_status("Evading", speak=True)
                 set_focus_elite_window()
-                self.vce.say("Shields down, evading")
-                self.afk_combat.evade()
-                # after supercruise the menu is reset to top
-                self.afk_combat.launch_fighter()  # at new location launch fighter
+                if not self.afk_combat.evade():
+                    self.notify_user(self.afk_combat.failure_reason, speak=True)
+                    return
+                self.set_ap_status("Deploying fighter", speak=True)
+                if not self.afk_combat.launch_fighter():
+                    self.notify_user(self.afk_combat.failure_reason, speak=True)
+                    return
                 break
 
-            if self.afk_combat.check_fighter_destroyed():
+            if self.afk_combat.check_fighter_destroyed(ship_state):
+                logger.debug("AFK combat: fighter destroyed, starting redeployment")
+                self.set_ap_status("Deploying fighter", speak=True)
                 set_focus_elite_window()
-                self.vce.say("Fighter Destroyed, redeploying")
-                self.afk_combat.launch_fighter()  # assuming two fighter bays
+                if not self.afk_combat.launch_fighter():
+                    self.notify_user(self.afk_combat.failure_reason, speak=True)
+                    return
+                self.set_ap_status("Monitoring shields")
+            sleep(AFK_COMBAT_POLL_INTERVAL)
 
-        self.vce.say("Terminating AFK Combat Assist")
+        logger.debug("AFK combat: finished after evasion and fighter deployment sequence")
 
     def dss_assist(self):
         while True:

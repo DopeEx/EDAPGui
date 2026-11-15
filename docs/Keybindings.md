@@ -31,9 +31,11 @@ in **Options > Controls**. The action names in the first column are the names ED
 | `UseBoostJuice` | Engine Boost | Ship Controls > Flight Miscellaneous |
 | `TargetNextRouteSystem` | Target Next Route System | Ship Controls |
 | `LandingGearToggle` | Landing Gear | Ship Controls > Miscellaneous |
+| `ToggleCargoScoop` | Cargo Scoop | Ship Controls > Miscellaneous |
 | `PrimaryFire` | Primary Fire | Ship Controls > Weapons |
 | `SecondaryFire` | Secondary Fire | Ship Controls > Weapons |
 | `DeployHardpointToggle` | Deploy Hardpoints | Ship Controls > Weapons |
+| `ResetPowerDistribution` | Balance Power Distribution | Ship Controls > Miscellaneous |
 | `IncreaseEnginesPower` | Divert Power to Engines | Ship Controls > Miscellaneous |
 | `IncreaseWeaponsPower` | Divert Power to Weapons | Ship Controls > Miscellaneous |
 | `IncreaseSystemsPower` | Divert Power to Systems | Ship Controls > Miscellaneous |

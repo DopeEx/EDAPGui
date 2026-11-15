@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.constants import FlagsDocked, FlagsSupercruise, GuiFocusNoFocus
 from game.status import StatusParser
@@ -24,6 +25,23 @@ STATUS = {
 
 
 class StatusParserTestCase(unittest.TestCase):
+    def test_optional_read_timeout_bounds_retries_for_invalid_or_unreadable_json(self):
+        write_json(self.path, STATUS)
+        parser = StatusParser(file_path=str(self.path))
+        self.path.write_text("{", encoding="utf-8")
+        for readable in (True, False):
+            with self.subTest(readable=readable):
+                clock = [0.0]
+                with (
+                    patch("game.status.time.monotonic", side_effect=lambda: clock[0]),
+                    patch("game.status.sleep", side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay)),
+                    patch("game.status.os.access", return_value=readable),
+                    patch.object(parser, "get_file_modified_time", return_value=-1),
+                ):
+                    with self.assertRaisesRegex(TimeoutError, "Status.json"):
+                        parser.get_cleaned_data(timeout=0.5)
+                self.assertEqual(clock[0], 0.5)
+
     def setUp(self):
         self._dir = tempfile.TemporaryDirectory()
         self.addCleanup(self._dir.cleanup)

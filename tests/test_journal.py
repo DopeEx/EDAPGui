@@ -40,6 +40,8 @@ def new_journal() -> EDJournal:
         "star_class": None,
         "target": None,
         "fighter_destroyed": False,
+        "fighter_launch_sequence": 0,
+        "fighter_launch_player_controlled": None,
         "shieldsup": True,
         "under_attack": None,
         "interdicted": False,
@@ -85,6 +87,28 @@ NEW_SHIPS = {
 
 
 class ModuleChecksTestCase(unittest.TestCase):
+    def test_fighter_launch_acknowledges_previous_loss_but_preserves_a_new_loss(self):
+        journal = new_journal()
+        journal.parse_line({"event": "FighterDestroyed"})
+        self.assertTrue(journal.ship["fighter_destroyed"])
+
+        journal.parse_line({"event": "LaunchFighter", "ID": 2, "PlayerControlled": False})
+        self.assertFalse(journal.ship["fighter_destroyed"])
+
+        journal.parse_line({"event": "FighterDestroyed"})
+        self.assertTrue(journal.ship["fighter_destroyed"])
+
+    def test_fighter_launch_sequence_distinguishes_fresh_events_and_pilot(self):
+        journal = new_journal()
+        journal.parse_line({"event": "LaunchFighter", "ID": 1, "PlayerControlled": False})
+        self.assertEqual(journal.ship["fighter_launch_sequence"], 1)
+        self.assertIs(journal.ship["fighter_launch_player_controlled"], False)
+        journal.parse_line({"event": "LaunchFighter", "ID": 2, "PlayerControlled": True})
+        self.assertEqual(journal.ship["fighter_launch_sequence"], 2)
+        self.assertIs(journal.ship["fighter_launch_player_controlled"], True)
+        journal.parse_line({"event": "LaunchFighter"})
+        self.assertIsNone(journal.ship["fighter_launch_player_controlled"])
+
     def test_journal_rollover_updates_filename_and_does_not_replay_old_events(self):
         journal = new_journal()
         journal.current_log = "old.log"

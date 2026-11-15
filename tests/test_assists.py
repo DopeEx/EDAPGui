@@ -1,17 +1,317 @@
 """Tests for the end-of-route decision in the assists."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
-from core.constants import FlagsSupercruise
-from core.types import FsdAssistResult, ScTargetAlignReturn
-from routines.assists import AssistsMixin
+from core.constants import (
+    FlagsCargoScoopDeployed,
+    FlagsFsdCharging,
+    FlagsFsdMassLocked,
+    FlagsHardpointsDeployed,
+    FlagsInMainShip,
+    FlagsLandingGearDown,
+    FlagsSupercruise,
+)
+from core.types import EdapInterruptError, FsdAssistResult, ScTargetAlignReturn
+from routines.afk_combat import AfkCombat
+from routines.assists import AFK_COMBAT_POLL_INTERVAL, AssistsMixin
 
 
 class Assists(AssistsMixin):
     def __init__(self, compass_readings):
         self.have_destination = Mock(side_effect=compass_readings)
         self.travel_assist_enabled = True
+
+
+class AfkCombatLoopTestCase(unittest.TestCase):
+    def test_polls_once_per_interval_and_reports_each_phase(self):
+        ship_states = [
+            {"status": "in_space", "shieldsup": True, "fighter_destroyed": False},
+            {"status": "in_space", "shieldsup": True, "fighter_destroyed": True},
+            {"status": "in_space", "shieldsup": False, "fighter_destroyed": False},
+        ]
+        assists = Assists([])
+        assists.jn = Mock()
+        assists.jn.ship_state.side_effect = ship_states
+        assists.afk_combat = AfkCombat(Mock(), assists.jn)
+        assists.afk_combat.evade = Mock(return_value=True)
+        assists.afk_combat.launch_fighter = Mock()
+        assists.set_ap_status = Mock()
+        assists.vce = Mock()
+        launch_statuses = []
+        assists.afk_combat.launch_fighter.side_effect = lambda: (
+            launch_statuses.append(assists.set_ap_status.call_args.args[0]) or True
+        )
+
+        with (
+            patch("routines.assists.sleep") as sleep,
+            patch("routines.assists.set_focus_elite_window"),
+            patch("routines.assists.logger") as logger,
+        ):
+            assists.afk_combat_loop()
+
+        self.assertEqual(assists.jn.ship_state.call_count, len(ship_states))
+        self.assertEqual(
+            assists.set_ap_status.call_args_list,
+            [
+                call("Monitoring shields"),
+                call("Deploying fighter", speak=True),
+                call("Monitoring shields"),
+                call("Evading", speak=True),
+                call("Deploying fighter", speak=True),
+            ],
+        )
+        self.assertEqual(launch_statuses, ["Deploying fighter", "Deploying fighter"])
+        self.assertEqual(sleep.call_args_list, [call(AFK_COMBAT_POLL_INTERVAL)] * 2)
+        self.assertFalse(ship_states[1]["fighter_destroyed"])
+        assists.afk_combat.evade.assert_called_once_with()
+        self.assertEqual(assists.afk_combat.launch_fighter.call_count, 2)
+        assists.vce.say.assert_not_called()
+        logger.debug.assert_any_call(
+            "AFK combat started: status=%s, shieldsup=%s, fighter_destroyed=%s", "in_space", True, False
+        )
+        logger.debug.assert_any_call("AFK combat: fighter destroyed, starting redeployment")
+        logger.debug.assert_any_call("AFK combat: shields down, starting evasion")
+        logger.debug.assert_any_call("AFK combat: finished after evasion and fighter deployment sequence")
+
+    def test_failed_evasion_or_launch_notifies_and_does_not_resume(self):
+        for failure in ("evade", "launch_fighter", "redeploy"):
+            with self.subTest(failure=failure):
+                assists = Assists([])
+                assists.jn = Mock()
+                assists.jn.ship_state.return_value = {
+                    "status": "in_space",
+                    "shieldsup": failure == "redeploy",
+                    "fighter_destroyed": failure == "redeploy",
+                }
+                assists.afk_combat = AfkCombat(Mock(), assists.jn)
+                assists.afk_combat.evade = Mock(return_value=failure != "evade")
+                assists.afk_combat.launch_fighter = Mock(return_value=False)
+                assists.afk_combat.failure_reason = "Confirmation timed out."
+                assists.set_ap_status = Mock()
+                assists.notify_user = Mock()
+                assists.vce = Mock()
+                with patch("routines.assists.set_focus_elite_window"):
+                    assists.afk_combat_loop()
+                assists.notify_user.assert_called_once_with("Confirmation timed out.", speak=True)
+                assists.vce.say.assert_not_called()
+                if failure == "evade":
+                    assists.afk_combat.launch_fighter.assert_not_called()
+
+
+class AfkCombatActionsTestCase(unittest.TestCase):
+    def setUp(self):
+        self.now = 0.0
+        self.keys = Mock()
+        self.journal = Mock()
+        self.status = Mock()
+        self.status.get_cleaned_data.return_value = {"Flags": FlagsInMainShip}
+        self.combat = AfkCombat(self.keys, self.journal, status=self.status)
+        self.power_patch = patch.object(self.combat, "_set_power", return_value=True)
+        self.set_power = self.power_patch.start()
+        self.addCleanup(self.power_patch.stop)
+        self.clock_patch = patch("routines.afk_combat.monotonic", side_effect=lambda: self.now)
+        self.sleep_patch = patch("routines.afk_combat.sleep", side_effect=self.advance)
+        self.clock_patch.start()
+        self.sleep_patch.start()
+        self.addCleanup(self.clock_patch.stop)
+        self.addCleanup(self.sleep_patch.stop)
+
+    def advance(self, seconds):
+        self.now += seconds
+
+    def test_evasion_retracts_only_deployed_items_and_waits_through_charging(self):
+        for deployed in (0, FlagsHardpointsDeployed | FlagsLandingGearDown | FlagsCargoScoopDeployed):
+            with self.subTest(deployed=deployed):
+                self.keys.reset_mock()
+                self.now = 0.0
+                self.status.get_cleaned_data.side_effect = [
+                    {"Flags": FlagsInMainShip | deployed},
+                    {"Flags": FlagsInMainShip},
+                    {"Flags": FlagsInMainShip | FlagsFsdCharging},
+                    {"Flags": FlagsInMainShip | FlagsFsdCharging},
+                    {"Flags": FlagsInMainShip | FlagsSupercruise},
+                    {"Flags": FlagsInMainShip | FlagsSupercruise},
+                    {"Flags": FlagsInMainShip | FlagsSupercruise},
+                    {"Flags": FlagsInMainShip},
+                ]
+                self.assertTrue(self.combat.evade())
+                self.assertEqual(self.set_power.call_args_list[-2:], [call("engine"), call("system")])
+                sent = [item.args[0] for item in self.keys.send.call_args_list]
+                self.assertNotIn("HyperSuperCombination", sent)
+                self.assertEqual(sent.count("Supercruise"), 2)  # Entry and confirmed-exit request.
+                for binding in ("DeployHardpointToggle", "LandingGearToggle", "ToggleCargoScoop"):
+                    self.assertEqual(sent.count(binding), bool(deployed))
+
+    def test_aborted_charge_is_retried_without_repeated_commands_while_charging(self):
+        def current_status(**kwargs):
+            if self.now < 3:
+                flags = FlagsInMainShip
+            elif self.now < 13:
+                flags = FlagsInMainShip | FlagsFsdCharging
+            elif self.now < 23:
+                flags = FlagsInMainShip
+            elif self.now < 55:
+                flags = FlagsInMainShip | FlagsSupercruise
+            else:
+                flags = FlagsInMainShip
+            return {"Flags": flags}
+
+        self.status.get_cleaned_data.side_effect = current_status
+        commands = []
+        self.keys.send.side_effect = lambda binding, **kwargs: commands.append((binding, self.now))
+        self.assertTrue(self.combat.evade())
+        entry_times = [time for binding, time in commands if binding == "Supercruise"][:-1]
+        self.assertEqual(entry_times, [2.0, 22.0])
+
+    def test_failed_start_logs_once_and_later_charging_is_detected_without_changing_retries(self):
+        def current_status(**kwargs):
+            flags = FlagsInMainShip
+            if 13 <= self.now < 23:
+                flags |= FlagsFsdCharging
+            elif 23 <= self.now < 55:
+                flags |= FlagsSupercruise
+            return {"Flags": flags}
+
+        self.status.get_cleaned_data.side_effect = current_status
+        commands = []
+        self.keys.send.side_effect = lambda binding, **kwargs: commands.append((binding, self.now))
+        with patch("routines.afk_combat.logger") as logger:
+            self.assertTrue(self.combat.evade())
+        self.assertEqual([time for binding, time in commands if binding == "Supercruise"][:-1], [2.0, 12.0])
+        diagnostic_calls = [
+            item
+            for item in logger.debug.call_args_list
+            if item.args[0].startswith(("AFK combat: no FSD charging", "AFK combat: FSD charging/jump"))
+        ]
+        self.assertEqual(
+            diagnostic_calls,
+            [
+                call(
+                    "AFK combat: no FSD charging detected after supercruise attempt %s; "
+                    "retry window reached, cause unknown",
+                    1,
+                ),
+                call("AFK combat: FSD charging/jump detected for supercruise attempt %s", 2),
+            ],
+        )
+
+    def test_entry_timeout_keeps_boosting_but_never_starts_while_mass_locked(self):
+        self.status.get_cleaned_data.return_value = {"Flags": FlagsInMainShip | FlagsFsdMassLocked}
+        self.assertFalse(self.combat.evade())
+        self.assertEqual(self.now, 120.0)
+        sent = [item.args[0] for item in self.keys.send.call_args_list]
+        self.assertGreater(sent.count("UseBoostJuice"), 1)
+        self.assertNotIn("Supercruise", sent)
+        self.assertNotIn("SetSpeedZero", sent)
+        self.assertIn("120 seconds", self.combat.failure_reason)
+
+    def test_exit_timeout_does_not_set_post_escape_pips_or_deploy_fighter(self):
+        self.status.get_cleaned_data.side_effect = [
+            {"Flags": FlagsInMainShip},
+            {"Flags": FlagsInMainShip | FlagsSupercruise},
+            {"Flags": FlagsInMainShip | FlagsSupercruise},
+        ] + [{"Flags": FlagsInMainShip | FlagsSupercruise}] * 61
+        self.assertFalse(self.combat.evade())
+        self.assertEqual(self.now, 63.0)
+        self.assertIn("exit", self.combat.failure_reason)
+        self.assertNotIn("IncreaseWeaponsPower", [item.args[0] for item in self.keys.send.call_args_list])
+
+    def test_fighter_requires_fresh_npc_launch_not_a_historical_event(self):
+        for pilot in (False, True, None):
+            with self.subTest(pilot=pilot):
+                self.journal.ship_state.side_effect = [
+                    {"fighter_launch_sequence": 5, "fighter_launch_player_controlled": False},
+                    {"fighter_launch_sequence": 5, "fighter_launch_player_controlled": False},
+                    {"fighter_launch_sequence": 6, "fighter_launch_player_controlled": pilot},
+                ]
+                self.assertEqual(self.combat.launch_fighter(), pilot is False)
+                if pilot is not False:
+                    self.assertIn("NPC-controlled", self.combat.failure_reason)
+
+    def test_fighter_confirmation_timeout_does_not_retry_menu_inputs(self):
+        self.journal.ship_state.return_value = {"fighter_launch_sequence": 5, "fighter_launch_player_controlled": False}
+        self.assertFalse(self.combat.launch_fighter())
+        self.assertIn("30 seconds", self.combat.failure_reason)
+        self.assertEqual([item.args[0] for item in self.keys.send.call_args_list].count("UIFocus"), 2)
+
+    def test_fighter_panel_releases_focus_when_navigation_is_interrupted_or_fails(self):
+        self.journal.ship_state.return_value = {"fighter_launch_sequence": 0}
+        for error in (EdapInterruptError(), RuntimeError("Navigation failed")):
+            with self.subTest(error=type(error).__name__):
+                self.keys.reset_mock()
+
+                def send(binding, **kwargs):
+                    if binding == "UI_Down":
+                        raise error
+
+                self.keys.send.side_effect = send
+                with self.assertRaises(type(error)):
+                    self.combat.launch_fighter()
+                self.assertEqual(self.keys.send.call_args_list[-1], call("UIFocus", state=0))
+                self.assertNotIn("UI_Select", [item.args[0] for item in self.keys.send.call_args_list])
+
+    def test_deployment_and_evasion_reject_supercruise_without_sending_inputs(self):
+        self.status.get_cleaned_data.return_value = {"Flags": FlagsInMainShip | FlagsSupercruise}
+        self.assertFalse(self.combat.launch_fighter())
+        self.assertFalse(self.combat.evade())
+        self.keys.send.assert_not_called()
+
+    def test_failed_power_confirmation_aborts_evasion_before_boosting(self):
+        self.set_power.return_value = False
+        self.assertFalse(self.combat.evade())
+        self.assertNotIn("UseBoostJuice", [item.args[0] for item in self.keys.send.call_args_list])
+
+
+class AfkCombatPowerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.now = 0.0
+        self.keys = Mock()
+        self.status = Mock()
+        self.combat = AfkCombat(self.keys, Mock(), status=self.status)
+
+    def advance(self, seconds):
+        self.now += seconds
+
+    def test_reset_and_exact_escape_and_recovery_distributions_are_confirmed(self):
+        reset = {"system": 2.0, "engine": 2.0, "weapons": 2.0}
+        for priority, target in (
+            ("engine", {"system": 2.0, "engine": 4.0, "weapons": 0.0}),
+            ("system", {"system": 4.0, "engine": 2.0, "weapons": 0.0}),
+        ):
+            with self.subTest(priority=priority):
+                self.keys.reset_mock()
+                self.status.get_cleaned_data.side_effect = [
+                    {"pips": {"system": 1.0, "engine": 4.0, "weapons": 1.0}},
+                    {"pips": reset},
+                    {"pips": reset},
+                    {"pips": target},
+                ]
+                with (
+                    patch("routines.afk_combat.monotonic", side_effect=lambda: self.now),
+                    patch("routines.afk_combat.sleep", side_effect=self.advance),
+                ):
+                    self.assertTrue(self.combat._set_power(priority))
+                self.assertEqual(self.keys.send.call_args_list[0], call("ResetPowerDistribution"))
+                self.assertNotIn("IncreaseWeaponsPower", [item.args[0] for item in self.keys.send.call_args_list])
+
+    def test_unconfirmed_reset_or_final_distribution_stops_instead_of_claiming_success(self):
+        for failure in ("reset", "final"):
+            with self.subTest(failure=failure):
+                self.now = 0.0
+                self.keys.reset_mock()
+                mismatch = {"pips": {"system": 1.0, "engine": 4.0, "weapons": 1.0}}
+                states = [{"pips": {"system": 2.0, "engine": 2.0, "weapons": 2.0}}] if failure == "final" else []
+                self.status.get_cleaned_data.side_effect = states + [mismatch] * 10
+                with (
+                    patch("routines.afk_combat.monotonic", side_effect=lambda: self.now),
+                    patch("routines.afk_combat.sleep", side_effect=self.advance),
+                ):
+                    self.assertFalse(self.combat._set_power("engine"))
+                self.assertIn("Power distribution", self.combat.failure_reason)
+                self.assertEqual(self.now, 5.0)
+                if failure == "reset":
+                    self.keys.send.assert_called_once_with("ResetPowerDistribution")
 
 
 def status(name="", body=-1):

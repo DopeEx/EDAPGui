@@ -219,8 +219,38 @@ an exact name match and confirmation from game state.
   different system.
 - **Single Waypoint Assist** selects a system entered on the Debug tab and travels there; it can also be given a
   local station target. It uses the same next-jump target checks as Waypoint Assist.
-- **AFK Combat Assist** monitors shield and fighter status, evades when shields are down, and redeploys a fighter
-  when one is destroyed.
+- **AFK Combat Assist** monitors shield and fighter status, reports its monitoring, evasion and fighter-deployment
+  phases, evades when shields are down, and attempts to redeploy a fighter when one is destroyed.
+  Evasion and fighter-deployment phases use the central status route with voice output when enabled.
+  Technical intermediate steps are debug-only; extra warnings use the GUI-log/voice notification route.
+  - Start in the main ship in normal space, pointing away from the resource extraction site. The existing fighter
+    menu sequence assumes two hangar rows and an available hired NPC pilot; it still alternates rows without
+    checking hangar readiness. Single-hangar and readiness recognition remain unsupported.
+  - Evasion retracts deployed hardpoints, landing gear and cargo scoop using Status.json. It uses the dedicated
+    **Supercruise** binding, never the combined FSD binding, so a selected system target does not redirect the
+    escape into a hyperspace jump. Bind **Cargo Scoop** (`ToggleCargoScoop`); run `fix_keybinds.bat` if needed.
+  - The 120-second entry timeout includes preparation, boosts and retries. No new supercruise command is sent
+    while charging, jumping, mass locked, cooling down or while the deployed items still block entry.
+    Entry is confirmed through the Status.json Supercruise flag, not merely a charging journal event.
+    After travelling away for 20 seconds and slowing for 10 seconds, the assist requests one exit and waits up
+    to 30 seconds for confirmed normal-space flight. Unreadable Status.json retries are also bounded for AFK.
+  - A fresh `LaunchFighter` event with `PlayerControlled=false` must confirm each NPC deployment within 30
+    seconds after the menu sequence. Old launch events do not count, and an unconfirmed launch is not retried
+    blindly. After confirmed redeployment it resumes monitoring; after evasion and confirmed deployment it ends.
+    A recorded fighter launch clears the earlier loss event, so restarting does not redeploy for that old loss.
+    A destruction event after the launch remains pending.
+    The held UI Focus binding is released even if opening the fighter panel is interrupted or fails.
+  - Failure stops the assist with a GUI-log/voice warning; take control of the ship. Entry failure does not
+    automatically stop the ship's forward escape. Debug logging records attempts, observed states and confirmations.
+    Each supercruise attempt logs whether FSD charging/jumping was observed or remained unobserved when the next
+    retry window was reached. These diagnostics do not identify the cause of a failed start, such as a temporary
+    damaged-module malfunction; they use the existing status polls without additional captures or reads.
+  - Before changing power distribution, the assist uses **Balance Power Distribution** (`ResetPowerDistribution`)
+    and confirms the 2/2/2 reset through Status.json. Escape then uses **SYS 2 / ENG 4 / WEP 0**; after confirmed
+    dropout, recovery uses **SYS 4 / ENG 2 / WEP 0**. The final distribution must also be confirmed.
+    Weapons remain retracted after escape. No weapons power or automatic return to combat is requested.
+    Bind the reset action manually or add it with `fix_keybinds.bat`. SYS power supplies the systems capacitor;
+    actual shield regeneration also depends on the shield and its current state.
 
 ## Follow-up items
 
