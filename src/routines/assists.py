@@ -467,6 +467,7 @@ class AssistsMixin:
         # if no error, we must have gotten disengage
         if not align_failed:
             self.set_ap_status("Approaching target")
+            self.keys.send("SetSpeedZero")
             sleep(4)  # wait for the journal to catch up
 
             # Check if this is a target we cannot dock at
@@ -492,7 +493,7 @@ class AssistsMixin:
 
             if not skip_docking:
                 # go into docking sequence
-                self.dock()
+                self.dock(scr_reg)
                 self.ap_ckb("log+vce", "Docking complete, refueled, repaired and re-armed")
                 self.set_ap_status("Docking Complete")
             else:

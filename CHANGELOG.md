@@ -71,6 +71,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Supercruise-message detection filters sparse cyan decorations, scattered HUD readouts and dense cyan noise before OCR. Message OCR runs in the background during approaches so target alignment can continue; stale or canceled matches cannot trigger a dropout.
 - FSD retries realign before charging again, and target alignment accounts for configured ship turn rates to reduce overshooting.
 - Compass alignment no longer steers blindly when its target is unreadable or repeatedly pitches past targets at the compass rim.
+- Station approaches stop and confirm compass alignment before flying forward, including after a docking denial due to distance. Unconfirmed alignment stops the approach instead of continuing away from the destination; forward flight remains time-based.
 - Conflicting weak compass readings trigger a retry instead of steering in an uncertain direction, while clearly hollow markers remain usable despite a weak filled-template vote.
 - Supercruise disengage detection continues when the target ring is lost or becomes an open arc near arrival.
 - Interdiction recovery waits for confirmed supercruise before realigning, avoiding assist aborts during the jump transition; an unconfirmed return stops with an error after a bounded wait.

@@ -25,7 +25,12 @@ This document summarizes the behavior currently implemented and lists a small nu
    If arrival is not confirmed within 60 seconds of requesting supercruise after cooldown, the assist stops with an
    error. This recovery also applies to Waypoint Assist.
 6. On disengagement, it checks whether docking is possible and whether the destination supports docking. When
-   applicable, it approaches, requests docking through the Navigation panel, and waits for the docking computer.
+   applicable, it sets zero throttle, waits briefly for deceleration and normal-space confirmation, and checks
+   that the compass target is ahead and centered. It turns only when needed and confirms the result before
+   approaching. Missing or unconfirmed alignment stops the approach with zero throttle and a user message.
+   This also applies to Waypoint station approaches and is repeated before moving closer after a docking denial
+   due to distance. Forward approach segments remain time-based; station distance is not measured.
+   It requests docking through the Navigation panel and waits for the docking computer.
    It confirms panel focus and the selected Contacts tab before sending the docking inputs. Tab changes are sent
    individually and checked again; unreadable highlights do not trigger blind switching. If confirmation times out,
    the docking attempt stops with an error instead of retrying selection in an unknown tab.
@@ -277,6 +282,8 @@ an exact name match and confirmation from game state.
 
 ## Follow-up items
 
+- Assess HUD distance OCR for feedback-controlled station approaches instead of timed forward flight. Deferred
+  until its reliability across resolutions, HUD colors and languages has been evaluated; not used by current approaches.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
   Bookmarks remain an alternative when a destination cannot be read reliably.
 - Avoid changing hyperspace-interdiction recovery until there is a reliable way to validate it. Interdiction attempts

@@ -519,7 +519,7 @@ class ScAssistStatusTestCase(unittest.TestCase):
         self.run_sc_assist(assists)
 
         self.assertEqual(statuses, ["Align", "SC to Target", "Approaching target", "Docking Complete"])
-        assists.dock.assert_called_once_with()
+        assists.dock.assert_called_once_with(None)
 
     def test_waypoint_station_name_is_kept_for_the_cruise_phase(self):
         assists, statuses = self.make_assists("SC to Station: Jameson Memorial")

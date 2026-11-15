@@ -406,6 +406,14 @@ class CompassAlignTestCase(unittest.TestCase):
         for maneuver in ("pitch_up", "pitch_down", "yaw_left", "yaw_right", "rotate_left", "rotate_right"):
             getattr(flight, maneuver).assert_not_called()
 
+    def test_alignment_is_available_after_a_docking_denial(self):
+        flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+        flight.jn.ship_state.return_value = {"status": "dockingdenied"}
+        flight.compass_confirmed.return_value = True
+        with patch("routines.flight.sleep"):
+            FlightMixin.nav_align(flight, None)
+        flight.compass_confirmed.assert_called_once_with(None, 10)
+
     def test_lost_nav_point_stops_the_maneuver_instead_of_guessing(self):
         flight = self.flight(
             [
@@ -484,6 +492,7 @@ class DockStatusTestCase(unittest.TestCase):
         dock.keys = Mock()
         dock.vce = Mock()
         dock.ap_ckb = Mock()
+        dock.compass_confirmed = Mock(return_value=True)
         dock.set_ap_status = statuses.append
 
         def request_docking():
@@ -495,8 +504,74 @@ class DockStatusTestCase(unittest.TestCase):
 
         dock.request_docking = request_docking
         with patch("routines.flight.sleep", side_effect=sleep):
-            dock.dock()
+            dock.dock(None)
 
-        self.assertEqual(statuses, ["Requesting docking", "Docking", "Refueling and repairing"])
+        self.assertEqual(statuses, ["Approaching target", "Requesting docking", "Docking", "Refueling and repairing"])
         sent = [c.args[0] for c in dock.keys.send.call_args_list]
         self.assertEqual(sent.count("UI_Select"), 3)
+
+    def make_dock(self):
+        dock = FlightMixin()
+        dock.keys = Mock()
+        dock.jn = Mock()
+        dock.jn.ship_state.return_value = {"status": "in_space", "no_dock_reason": None}
+        dock.set_ap_status = Mock()
+        dock.notify_user = Mock()
+        dock.nav_align = Mock(return_value=False)
+        dock.compass_confirmed = Mock(return_value=True)
+        dock.request_docking = Mock()
+        return dock
+
+    def test_centered_target_needs_no_turn_before_approach(self):
+        dock = self.make_dock()
+        with patch("routines.flight.sleep"):
+            dock._align_for_docking(None)
+        dock.keys.send.assert_called_once_with("SetSpeedZero", repeat=2)
+        dock.nav_align.assert_not_called()
+        dock.set_ap_status.assert_called_once_with("Approaching target")
+
+    def test_turn_is_followed_by_confirmation_before_forward_throttle(self):
+        dock = self.make_dock()
+        dock.compass_confirmed.side_effect = [False, True]
+        with patch("routines.flight.sleep"):
+            dock._align_for_docking(None)
+        dock.nav_align.assert_called_once_with(None)
+        self.assertEqual(dock.compass_confirmed.call_count, 2)
+        self.assertEqual(dock.set_ap_status.call_args_list, [call("Align"), call("Approaching target")])
+        self.assertNotIn(call("SetSpeed50"), dock.keys.send.call_args_list)
+
+    def test_unconfirmed_alignment_or_flight_state_blocks_approach_and_docking(self):
+        for state, confirmed in (("in_space", False), ("in_supercruise", True)):
+            with self.subTest(state=state):
+                dock = self.make_dock()
+                dock.jn.ship_state.return_value["status"] = state
+                dock.compass_confirmed.return_value = confirmed
+                with patch("routines.flight.sleep"), self.assertRaises(RuntimeError):
+                    dock.dock(None)
+                self.assertNotIn(call("SetSpeed50"), dock.keys.send.call_args_list)
+                dock.request_docking.assert_not_called()
+                dock.notify_user.assert_called_once()
+
+    def test_distance_denial_rechecks_alignment_before_further_approach(self):
+        dock = self.make_dock()
+        dock.config = {"DockingRetries": 1}
+        dock.vce = Mock()
+        dock.compass_confirmed.side_effect = [True, False, False]
+
+        def deny():
+            dock.jn.ship_state.return_value.update(status="dockingdenied", no_dock_reason="Distance")
+
+        dock.request_docking.side_effect = deny
+        with patch("routines.flight.sleep"), self.assertRaisesRegex(RuntimeError, "alignment"):
+            dock.dock(None)
+        dock.request_docking.assert_called_once_with()
+        dock.nav_align.assert_called_once_with(None)
+        self.assertEqual(dock.keys.send.call_args_list.count(call("SetSpeed50")), 1)
+
+    def test_compass_confirmation_rejects_rear_or_missing_target(self):
+        for reading in (None, {"z": -1, "yaw": 0, "pit": 0}, {"z": 1, "yaw": 20, "pit": 0}):
+            with self.subTest(reading=reading):
+                dock = self.make_dock()
+                dock.get_nav_offset = Mock(return_value=reading)
+                with patch("routines.flight.sleep"):
+                    self.assertFalse(FlightMixin.compass_confirmed(dock, None, 10))
