@@ -34,6 +34,9 @@ For a simple first trip, choose a station in your current system and leave tradi
 7. Leave **Repeat route** off. Start **Waypoint Assist** from the sidebar and return focus to the game.
 
 The assist selects the destination, travels there and docks when a station was requested.
+Before approaching a station, it sets zero throttle and confirms compass alignment, turning only if needed.
+It repeats this check before moving closer after a docking denial due to distance. Unconfirmed alignment stops
+the approach; forward flight remains time-based rather than using a measured station distance.
 The list shows the waypoint as **Done** when its visit and requested actions are complete.
 Without repetition, the assist finishes after the last active waypoint and returns to **Idle**.
 

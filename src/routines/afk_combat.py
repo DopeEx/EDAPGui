@@ -7,6 +7,7 @@ confirmation; hangar readiness is not checked. The ship must point away from the
 from time import monotonic, sleep
 from typing import Literal
 
+from controls.power import set_power_distribution
 from core.constants import (
     FlagsCargoScoopDeployed,
     FlagsDocked,
@@ -26,7 +27,6 @@ SUPERCRUISE_ENTRY_TIMEOUT = 120.0
 SUPERCRUISE_EXIT_TIMEOUT = 30.0
 FIGHTER_LAUNCH_TIMEOUT = 30.0
 POLL_INTERVAL = 0.5
-POWER_CONFIRM_TIMEOUT = 5.0
 
 
 class AfkCombat:
@@ -46,34 +46,10 @@ class AfkCombat:
         timeout = 5.0 if deadline is None else min(5.0, max(0.0, deadline - monotonic()))
         return self.status.get_cleaned_data(timeout=timeout)["Flags"]
 
-    def _wait_for_power(self, expected: dict[str, float]) -> bool:
-        deadline = monotonic() + POWER_CONFIRM_TIMEOUT
-        observed = None
-        while monotonic() < deadline:
-            remaining = max(0.0, deadline - monotonic())
-            observed = self.status.get_cleaned_data(timeout=remaining).get("pips")
-            if observed == expected:
-                logger.debug("AFK combat: power distribution confirmed: %s", observed)
-                return True
-            sleep(POLL_INTERVAL)
-        logger.debug("AFK combat: power confirmation failed: expected=%s, observed=%s", expected, observed)
-        return self._fail("Power distribution was not confirmed; take control of the ship.")
-
     def _set_power(self, priority: Literal["engine", "system"]) -> bool:
-        logger.debug("AFK combat: resetting power distribution, priority=%s", priority)
-        self.k.send("ResetPowerDistribution")
-        if not self._wait_for_power({"system": 2.0, "engine": 2.0, "weapons": 2.0}):
-            return False
-        # Saturate the secondary capacitor first, then the priority capacitor, draining weapons.
-        if priority == "engine":
-            self.k.send("IncreaseSystemsPower", repeat=4)
-            self.k.send("IncreaseEnginesPower", repeat=6)
-            expected = {"system": 2.0, "engine": 4.0, "weapons": 0.0}
-        else:
-            self.k.send("IncreaseEnginesPower", repeat=4)
-            self.k.send("IncreaseSystemsPower", repeat=6)
-            expected = {"system": 4.0, "engine": 2.0, "weapons": 0.0}
-        return self._wait_for_power(expected)
+        if set_power_distribution(self.k, self.status, priority):
+            return True
+        return self._fail("Power distribution was not confirmed; take control of the ship.")
 
     def check_shields_up(self, state=None):
         if state is None:

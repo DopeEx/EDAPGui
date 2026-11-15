@@ -3,6 +3,7 @@
 import threading
 from time import monotonic, sleep
 
+from controls.power import set_power_distribution
 from core.constants import Flags2GlideMode, FlagsAnalysisMode, FlagsDocked, FlagsLanded, FlagsSupercruise
 from core.logger import logger
 from core.types import FsdAssistResult, ScTargetAlignReturn
@@ -310,7 +311,15 @@ class AssistsMixin:
 
     def travel_assist(self, scr_reg):
         """Choose the required travel phase from the currently targeted system."""
-        if self.jump_target():
+        system_target = self.jump_target()
+        if not system_target and not self.has_in_system_target(self.status.get_cleaned_data()):
+            self.ap_ckb("log", "No local target found. Select a target and try again.")
+            return
+        if not self.ship_control.goto_cockpit_view(timeout=5.0):
+            return
+        if not set_power_distribution(self.keys, self.status, "engine", skip_if_set=True):
+            self.notify_user("Power distribution could not be confirmed. Travel Assist will continue.")
+        if system_target:
             self.total_dist_jumped = 0
             result = self.fsd_assist(scr_reg)
             if result is FsdAssistResult.InSystemTarget and self.travel_assist_enabled:
@@ -458,6 +467,7 @@ class AssistsMixin:
         # if no error, we must have gotten disengage
         if not align_failed:
             self.set_ap_status("Approaching target")
+            self.keys.send("SetSpeedZero")
             sleep(4)  # wait for the journal to catch up
 
             # Check if this is a target we cannot dock at
@@ -483,7 +493,7 @@ class AssistsMixin:
 
             if not skip_docking:
                 # go into docking sequence
-                self.dock()
+                self.dock(scr_reg)
                 self.ap_ckb("log+vce", "Docking complete, refueled, repaired and re-armed")
                 self.set_ap_status("Docking Complete")
             else:

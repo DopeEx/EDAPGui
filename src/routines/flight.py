@@ -122,29 +122,37 @@ class FlightMixin:
         if not self.nav_panel.request_docking():
             raise RuntimeError("Docking request failed (contacts tab not confirmed)")
 
-    def dock(self):
+    def _align_for_docking(self, scr_reg):
+        self.keys.send("SetSpeedZero", repeat=2)
+        sleep(3)
+        if self.jn.ship_state()["status"] not in ("in_space", "dockingdenied"):
+            logger.warning("Station approach stopped: normal-space flight was not confirmed.")
+            self.notify_user("Could not confirm normal-space flight. Station approach stopped.")
+            raise RuntimeError("Docking failed (not in space)")
+        if not self.compass_confirmed(scr_reg, 10):
+            self.set_ap_status("Align")
+            # nav_align's return value reports a supercruise exit, not alignment success.
+            self.nav_align(scr_reg)
+            if not self.compass_confirmed(scr_reg, 10):
+                self.keys.send("SetSpeedZero", repeat=2)
+                logger.warning("Station approach stopped: target alignment was not confirmed.")
+                self.notify_user(
+                    "Could not confirm target alignment. Station approach stopped; take control of the ship."
+                )
+                raise RuntimeError("Docking failed (target alignment unconfirmed)")
+        logger.debug("Station approach: target confirmed ahead and centered.")
+        self.set_ap_status("Approaching target")
+
+    def dock(self, scr_reg):
         """Docking sequence.  Assumes in normal space, will get closer to the Station
         then zero the velocity and execute menu commands to request docking, when granted
         will wait a configurable time for dock.  Perform Refueling and Repair.
         """
-        # if not in normal space, give a few more sections as at times it will take a little bit
-        if self.jn.ship_state()["status"] != "in_space":
-            sleep(3)  # sleep a little longer
-
-        if self.jn.ship_state()["status"] != "in_space":
-            logger.error("In dock(), after wait, but still not in_space")
-
-        sleep(5)  # wait 5 seconds to get to 7.5km to request docking
+        self._align_for_docking(scr_reg)
         self.keys.send("SetSpeed50")
 
-        if self.jn.ship_state()["status"] != "in_space":
-            self.keys.send("SetSpeedZero")
-            logger.error("In dock(), after long wait, but still not in_space")
-            raise Exception("Docking failed (not in space)")
-
         sleep(12)
-        # At this point (of sleep()) we should be < 7.5km from the station.  Go 0 speed
-        # if we get docking granted ED's docking computer will take over
+        # Distance is not measured; a Distance denial triggers another checked approach.
         self.keys.send("SetSpeedZero", repeat=2)
         sleep(3)  # Wait for ship to come to stop
         self.set_ap_status("Requesting docking")
@@ -160,10 +168,12 @@ class FlightMixin:
         else:
             for i in range(tries):
                 if self.jn.ship_state()["no_dock_reason"] == "Distance":
+                    self._align_for_docking(scr_reg)
                     self.keys.send("SetSpeed50")
                     sleep(5)
                     self.keys.send("SetSpeedZero", repeat=2)
                 sleep(3)  # Wait for ship to come to stop
+                self.set_ap_status("Requesting docking")
                 # Request docking through Nav panel.
                 self.request_docking()
                 self.keys.send("SetSpeedZero", repeat=2)
@@ -294,7 +304,7 @@ class FlightMixin:
         and True is returned."""
 
         close = 10  # in degrees
-        if not (self.jn.ship_state()["status"] == "in_supercruise" or self.jn.ship_state()["status"] == "in_space"):
+        if self.jn.ship_state()["status"] not in ("in_supercruise", "in_space", "dockingdenied"):
             logger.error("align=err1, nav_align not in super or space")
             raise Exception("nav_align not in super or space")
 
