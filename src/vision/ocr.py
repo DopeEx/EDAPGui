@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 import warnings
 
@@ -37,6 +38,7 @@ class OCR:
     def __init__(self, screen, language: str = "en"):
         self.screen = screen
         self.language = language
+        self._predict_lock = threading.Lock()
         self.paddleocr = PaddleOCR(
             lang=language,
             use_doc_orientation_classify=False,
@@ -63,17 +65,18 @@ class OCR:
         This is intended for callers that compare text and do not need PaddleOCR's
         positional, confidence, or other result metadata.
         """
-        results = self.paddleocr.predict(input=image)
-        if results is None:
-            return None
-
-        ocr_textlist = []
-        for result in results:
-            if result is None:
+        with self._predict_lock:
+            results = self.paddleocr.predict(input=image)
+            if results is None:
                 return None
-            ocr_textlist.extend(result.json["res"]["rec_texts"])
 
-        return ocr_textlist
+            ocr_textlist = []
+            for result in results:
+                if result is None:
+                    return None
+                ocr_textlist.extend(result.json["res"]["rec_texts"])
+
+            return ocr_textlist
 
     def get_highlighted_item_data(self, image, min_w, min_h):
         """Attempts to find a selected item in an image. The selected item is identified by being solid orange or blue

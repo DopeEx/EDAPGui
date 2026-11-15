@@ -6,7 +6,7 @@ none. The file names tell what is expected:
  - target-occluded / target-visible / aligned-target: the target ring is detected as occluded or not
  - compass / aligned-target: the compass is found
  - jump-align-msg: OCR recognizes the localized FSD alignment prompt in the HUD
- - disengage-msg: the message gate (message-colored area) lets the message region pass; the OCR is not run
+ - disengage-msg: the message gate's color, line and compact-glyph checks accept the prompt; the OCR is not run
  - no-msg: the message gate must not pass (guards against false alarms that trigger slow OCR runs)
  - station-services: OCR recognizes the localized header in each provided color scheme
  - galaxy-map: OCR recognizes the map header in each provided color scheme

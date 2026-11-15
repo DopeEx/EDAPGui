@@ -925,12 +925,18 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
     #
     def set_travel_assist(self, enable=True):
         if not enable and self.travel_assist_enabled:
+            worker = getattr(self, "_disengage_worker", None)
+            if worker is not None:
+                worker.invalidate()
             self._end_statistics_assist()
             self.ctype_async_raise(self.ap_thread, EdapInterruptError)
         self.travel_assist_enabled = enable
 
     def set_waypoint_assist(self, enable=True):
         if not enable and self.waypoint_assist_enabled:
+            worker = getattr(self, "_disengage_worker", None)
+            if worker is not None:
+                worker.invalidate()
             self._end_statistics_assist()
             self.ctype_async_raise(self.ap_thread, EdapInterruptError)
         self.waypoint_assist_enabled = enable
@@ -1021,6 +1027,9 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
     # quit() is important to call to clean up, if we don't terminate the threads we created the AP will hang on exit
     # have then then kill python exec
     def quit(self):
+        worker = getattr(self, "_disengage_worker", None)
+        if worker is not None:
+            worker.invalidate()
         if self.statistics is not None:
             self.statistics.close()
         for name in ("compass", "target", "occluded", "hud"):

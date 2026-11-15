@@ -20,6 +20,7 @@ from core.constants import (
 from core.logger import logger
 from i18n.localization import normalize_text
 from vision.diagnostics import save_case
+from vision.disengage import DISENGAGE_SIMILARITY, read_disengage_prompt
 
 INTERDICTION_SC_TIMEOUT = 60.0
 
@@ -301,6 +302,7 @@ class DetectionMixin:
         behind_image, (_, behind_val, _, behind_loc), _ = scr_reg.match_template_in_image_x3(
             compass_image, "navpoint-behind", template_scale
         )
+        template_z_pct = 1.0 if n_maxVal > behind_val else -1.0
         ahead = n_maxVal >= scr_reg.navpoint_match_thresh or (
             n_maxVal >= scr_reg.navpoint_glare_thresh and n_maxVal > behind_val + 0.1
         )
@@ -328,8 +330,15 @@ class DetectionMixin:
                 compass_image, f"a{n_maxVal:.2f}-b{behind_val:.2f}", context=scr_reg.compass_debug_context
             )
             if white is not None:
+                fallback_z = -1.0 if white[2] else 1.0
+                if fallback_z != template_z_pct and not white[2]:
+                    logger.debug(
+                        "Ignoring weak nav point fallback at %s: its direction conflicts with the templates",
+                        (round(white[0]), round(white[1])),
+                    )
+                    return None
                 n_pt = (round(white[0] - wid / 2), round(white[1] - hgt / 2))
-                final_z_pct = -1.0 if white[2] else 1.0
+                final_z_pct = fallback_z
                 logger.debug(f"Compass {'behind' if white[2] else 'ahead'} marker found without template at {n_pt}")
             else:
                 logger.debug("Compass nav point not found, template position is unreliable")
@@ -683,18 +692,26 @@ class DetectionMixin:
 
         # Heartbeat every 5 s, so the log shows that the check runs and how much message-colored area it sees
         now = time.monotonic()
-        if now - getattr(self, "_message_log_time", 0.0) >= 5.0:
+        if now - getattr(self, "_message_log_time", 0.0) >= 5.0 or text_present != getattr(
+            self, "_message_was_present", False
+        ):
             self._message_log_time = now
             fraction = getattr(scr_reg, "last_message_fraction", 0.0)
             line = getattr(scr_reg, "last_message_line", 0.0)
+            glyph_components = getattr(scr_reg, "last_message_glyph_components", 0)
             logger.debug(
                 f"Disengage message check: message-colored area {fraction:.3f} (needs {scr_reg.message_text_fraction}), "
-                f"longest line {line:.2f} (needs {scr_reg.message_line_fraction})"
+                f"longest line {line:.2f} (needs {scr_reg.message_line_fraction}), "
+                f"text-like glyph components {glyph_components} "
+                f"(needs {scr_reg.message_glyph_components_min}-{scr_reg.message_glyph_components_max}), "
+                f"aligned glyphs {getattr(scr_reg, 'last_message_row_glyphs', 0)} "
+                f"(needs {scr_reg.message_row_glyphs_min})"
             )
 
         # Log only when a message appears, so the log shows whether the detection saw it
         if text_present != getattr(self, "_message_was_present", False):
             self._message_was_present = text_present
+            self._disengage_mismatch_saved = False
             if text_present:
                 logger.debug("HUD message text detected in the disengage region, reading it with OCR.")
         if self.cv_frames.is_open("hud"):
@@ -716,29 +733,14 @@ class DetectionMixin:
 
     def sc_disengage_active(self, scr_reg) -> bool:
         """look for the "PRESS [Y] TO DISENGAGE" text using OCR, if in this region then return true."""
-        # OCR the selected item. The raw images are a fallback for messages partly covered by the cockpit frame,
-        # the plain raw image is tried before the slower enlarged one.
-        sim_match = 0.35  # Similarity match 0.0 - 1.0 for 0% - 100%)
-        sim = 0.0
-        ocr_textlist = None
-        debug_images = {}
-        readable = False
-        for variant in ({}, {"raw": True}, {"raw": True, "upscale": 2}):
-            image = scr_reg.message_image("disengage", **variant)
-            textlist = self.ocr.image_simple_ocr(image)
-            if logger.isEnabledFor(logging.DEBUG):
-                name = "masked" if not variant else ("raw-upscaled" if variant.get("upscale") else "raw")
-                debug_images[name] = image.copy()
-                readable = readable or any(text.strip() for text in (textlist or []))
-            if textlist is None:
-                logger.debug(f"Disengage OCR returned no text ({variant or 'masked'}).")
-                continue
-            variant_sim = self.message_similarity("PRESS_TO_DISENGAGE_MSG", textlist)
-            logger.debug(f"Disengage similarity with {str(textlist)} is {variant_sim} ({variant or 'masked'})")
-            if variant_sim > sim or ocr_textlist is None:
-                sim, ocr_textlist = variant_sim, textlist
-            if sim > sim_match:
-                break
+        reading = read_disengage_prompt(
+            self.ocr, self.locale.all_values("PRESS_TO_DISENGAGE_MSG"), scr_reg.message_image
+        )
+        return self.report_disengage_reading(scr_reg, reading)
+
+    def report_disengage_reading(self, scr_reg, reading) -> bool:
+        sim, ocr_textlist, image = reading.similarity, reading.text, reading.image
+        sim_match = DISENGAGE_SIMILARITY
         # Draw box around region
         if self.debug_overlay:
             abs_rect = scr_reg.reg["disengage"]["rect"]
@@ -778,8 +780,9 @@ class DetectionMixin:
             # cv2.imwrite(paths.debug_path('disengage.png'), image)
             return True
 
-        if debug_images and not readable:
-            save_case("hud-disengage", "unreadable", debug_images)
+        if reading.debug_images and not getattr(self, "_disengage_mismatch_saved", False):
+            save_case("hud-disengage", "unmatched" if reading.readable else "unreadable", reading.debug_images)
+            self._disengage_mismatch_saved = True
         return False
 
     def is_sun_dead_ahead(self, scr_reg):

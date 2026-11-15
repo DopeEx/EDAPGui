@@ -19,7 +19,7 @@ from core.constants import FlagsBeingInterdicted, FlagsFsdJump, FlagsSupercruise
 from core.types import EdapInterruptError
 from gui.cv_view import CvFrames
 from routines.flight import FlightMixin
-from tests.helpers import FIXTURES, FakeScreen, load_fixture_image, load_screenshot, pad_to_region
+from tests.helpers import FIXTURES, FakeScreen, ScreenshotScreen, load_fixture_image, load_screenshot, pad_to_region
 from vision.detection import DetectionMixin
 from vision.regions import ScreenRegions
 from vision.templates import ImageTemplates
@@ -373,6 +373,66 @@ class CompassTestCase(MatchingTestCase):
             self.assertIsNone(detector.get_nav_offset(regions))
         fallback.assert_called_once()
 
+    def test_conflicting_weak_template_and_white_blob_directions_are_rejected(self):
+        detector = Detector()
+        regions = self.regions("compass")
+        image = self.images["compass"]
+        regions.match_compass_multiscale = Mock(return_value=(image, (0, 0.9, (0, 0), (0, 0)), 1.0))
+        regions.match_template_in_image_x3 = Mock(
+            side_effect=[
+                (image, (0, 0.72, (0, 0), (30, 30)), None),
+                (image, (0, 0.78, (0, 0), (40, 40)), None),
+            ]
+        )
+        regions.compass_debug_context = None
+        with (
+            patch.object(detector, "find_white_navpoint", return_value=(60, 60, False)) as fallback,
+            patch.object(detector, "dump_compass_debug"),
+        ):
+            self.assertIsNone(detector.get_nav_offset(regions))
+        fallback.assert_called_once()
+
+    def test_type10_weak_compass_conflict_crop_is_rejected(self):
+        path = FIXTURES / "screenshots" / "2160p" / "168_crop_compass-weak-direction-conflict_type10.png"
+        if not path.exists():
+            self.skipTest("local Type-10 compass regression crop unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+        detector = Detector()
+        with patch.object(detector, "dump_compass_debug"):
+            self.assertIsNone(detector.get_nav_offset(regions))
+
+    def test_hollow_marker_overrides_conflicting_weak_filled_template(self):
+        detector = Detector()
+        regions = self.regions("compass")
+        image = np.full((150, 150, 3), (160, 160, 0), np.uint8)
+        regions.compass_debug_context = None
+        regions.match_compass_multiscale = Mock(return_value=(image, (0, 0.92, (0, 0), (5, 5)), 1.0))
+        regions.match_template_in_image_x3 = Mock(
+            side_effect=[
+                (image, (0, 0.72, (0, 0), (0, 28)), None),
+                (image, (0, 0.53, (0, 0), (110, 68)), None),
+            ]
+        )
+        with (
+            patch.object(detector, "find_white_navpoint", return_value=(115, 65, True)),
+            patch.object(detector, "dump_compass_debug"),
+        ):
+            offset = detector.get_nav_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], -1.0)
+        self.assertGreater(offset["x"], 0.5)
+
+    def test_type10_hollow_right_rim_marker_remains_usable(self):
+        path = FIXTURES / "screenshots" / "diagnostics" / "compass" / "type10-hollow-right-rim-context.png"
+        if not path.exists():
+            self.skipTest("local Type-10 hollow marker crop unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], -1.0)
+        self.assertGreater(offset["x"], 0.8)
+
     def test_missing_compass_measurements_are_debug_only(self):
         with self.assertNoLogs("ed_log", level="INFO"):
             self.assertFalse(self.detect("have_destination", "empty"))
@@ -456,6 +516,28 @@ class CompassTestCase(MatchingTestCase):
 
 
 class TargetTestCase(MatchingTestCase):
+    def test_target_crossing_previous_search_top_is_detected(self):
+        height, width = 2160, 3840
+        image = np.zeros((height, width, 3), np.uint8)
+        template = self.templates.template["target"]["image"]
+        x = (width - template.shape[1]) // 2
+        y = int(0.27 * height) - 25
+        color = cv2.cvtColor(np.uint8([[[20, 200, 240]]]), cv2.COLOR_HSV2BGR)[0, 0]
+        image[y : y + template.shape[0], x : x + template.shape[1]][template > 128] = color
+
+        old_regions = ScreenRegions(ScreenshotScreen(image), self.templates)
+        old_rect = old_regions.reg["target"]["rect"]
+        old_rect[1] = int(0.27 * height)
+        old_regions.reg["target"]["height"] = old_rect[3] - old_rect[1]
+        _, old_result, _ = old_regions.match_target_multiscale()
+        self.assertLess(old_result[1], old_regions.target_thresh)
+
+        regions = ScreenRegions(ScreenshotScreen(image), self.templates)
+        _, result, selected = regions.match_target_multiscale()
+        self.assertGreaterEqual(result[1], regions.target_thresh)
+        self.assertIs(selected, template)
+        self.assertIsNotNone(Detector().get_destination_offset(regions))
+
     def test_scaled_target_has_the_correct_circle_center_and_is_not_hidden(self):
         for height in (1080, 2160):
             templates = ImageTemplates(height)
@@ -537,6 +619,47 @@ class TargetTestCase(MatchingTestCase):
                 self.assertEqual(selected.shape, (201, 174))
                 self.assertIsNotNone(Detector().get_destination_offset(regions))
 
+    def test_local_target_near_previous_search_top_is_detected(self):
+        fixtures = (
+            ("169_crop_target-upper-edge_type10_context.png", 0.27),
+            ("170_crop_target-upper-edge_type10_context.png", 0.25),
+        )
+        available = [
+            (FIXTURES / "screenshots" / "2160p" / name, source_top)
+            for name, source_top in fixtures
+            if (FIXTURES / "screenshots" / "2160p" / name).exists()
+        ]
+        if not available:
+            self.skipTest("local upper-edge target context unavailable")
+
+        width, height = 3840, 2160
+        old_width = int(0.66 * width) - int(0.33 * width)
+        for path, source_top in available:
+            with self.subTest(screenshot=path.name):
+                context = load_screenshot(path)
+                source_top = int(source_top * height)
+                source_height = int(0.70 * height) - source_top
+                context_left = (context.shape[1] - old_width) // 2
+                context_top = (context.shape[0] - source_height) // 2
+                old_roi = context[context_top : context_top + source_height, context_left : context_left + old_width]
+                old_regions = ScreenRegions(FakeScreen(old_roi, width=width, height=height), self.templates)
+                _, old_result, _ = old_regions.match_target_multiscale()
+                self.assertLess(old_result[1], old_regions.target_thresh)
+
+                regions = ScreenRegions(FakeScreen(context, width=width, height=height), self.templates)
+                rect = regions.reg["target"]["rect"]
+                expanded_top = context_top - (source_top - rect[1])
+                expanded_height = rect[3] - rect[1]
+                target_roi = context[
+                    expanded_top : expanded_top + expanded_height, context_left : context_left + old_width
+                ]
+                self.assertEqual(target_roi.shape[:2], (expanded_height, old_width))
+
+                regions = ScreenRegions(FakeScreen(target_roi, width=width, height=height), self.templates)
+                _, result, _ = regions.match_target_multiscale()
+                self.assertGreaterEqual(result[1], regions.target_thresh)
+                self.assertIsNotNone(Detector().get_destination_offset(regions))
+
     def test_text_and_unselected_circles_are_not_targets(self):
         for scene in ("text", "circle"):
             with self.subTest(scene=scene):
@@ -553,7 +676,7 @@ class TargetTestCase(MatchingTestCase):
 
         self.assertIsNotNone(offset)
         self.assertAlmostEqual(offset["x"], -475.6, delta=5)
-        self.assertAlmostEqual(offset["y"], 220.9, delta=5)
+        self.assertAlmostEqual(offset["y"], 263.9, delta=5)
 
     def test_target_match_score_and_offset_are_logged(self):
         with self.assertLogs("ed_log", level="DEBUG") as captured:
@@ -674,6 +797,7 @@ class DisengageTestCase(MatchingTestCase):
             self.assertTrue(Detector().sc_disengage_label_up(self.regions("message")))
         self.assertTrue(any("Disengage message check:" in record.getMessage() for record in logs.records))
         self.assertTrue(any("reading it with OCR" in record.getMessage() for record in logs.records))
+        self.assertTrue(any("text-like glyph components" in record.getMessage() for record in logs.records))
         self.assertTrue(all(record.levelno == logging.DEBUG for record in logs.records))
 
     def test_ocr_diagnostics_are_debug_only_and_exit_status_remains_info(self):
@@ -695,6 +819,34 @@ class DisengageTestCase(MatchingTestCase):
                     self.assertTrue(any("OCR returned no text" in message for message in debug))
                     self.assertTrue(any("Disengage similarity" in message for message in debug))
 
+    def test_readable_but_unmatched_ocr_is_saved_once_per_message_gate_event(self):
+        detector = Detector()
+        detector.debug_overlay = False
+        detector.ocr = Mock()
+        detector.ocr.image_simple_ocr.return_value = ["1659"]
+        detector.ocr.string_similarity.return_value = 0.0
+        detector.locale = Mock()
+        detector.locale.all_values.return_value = ["PRESS TO DISENGAGE"]
+        regions = Mock()
+        regions.message_text_present.side_effect = [True, False, True]
+        regions.last_message_fraction = 0.02
+        regions.last_message_line = 0.3
+        regions.message_image.return_value = np.zeros((40, 120, 3), np.uint8)
+
+        with patch("vision.detection.save_case") as save_case, self.assertLogs("ed_log", level="DEBUG"):
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+
+        self.assertEqual(save_case.call_count, 2)
+        self.assertEqual(
+            [call.args[:2] for call in save_case.call_args_list],
+            [("hud-disengage", "unmatched"), ("hud-disengage", "unmatched")],
+        )
+
     def test_disengage_message_is_recognised(self):
         self.assertTrue(Detector().sc_disengage_label_up(self.regions("message")))
 
@@ -703,12 +855,88 @@ class DisengageTestCase(MatchingTestCase):
 
     def test_small_dropout_prompt_passes_the_message_gate(self):
         image = np.zeros((100, 100, 3), np.uint8)
-        prompt = np.uint8([[[90, 150, 255]]])
-        image[20:40, 20:50] = cv2.cvtColor(prompt, cv2.COLOR_HSV2BGR)[0, 0]
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        for index in range(20):
+            x = 5 + index * 4
+            cv2.rectangle(image, (x, 30), (x + 1, 40), color, -1)
         regions = ScreenRegions(FakeScreen(image), self.templates)
 
         self.assertTrue(regions.message_text_present())
-        self.assertGreaterEqual(regions.last_message_fraction, 0.03)
+        self.assertGreaterEqual(regions.last_message_glyph_components, regions.message_glyph_components_min)
+
+    def test_hud_readout_with_15_glyphs_does_not_trigger_disengage_ocr(self):
+        image = np.zeros((100, 100, 3), np.uint8)
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 20), (30, 20), color, 1)
+        for index in range(15):
+            x = 5 + index * 5
+            cv2.rectangle(image, (x, 35), (x + 1, 45), color, -1)
+        regions = ScreenRegions(FakeScreen(image), self.templates)
+        detector = Detector()
+        detector.debug_overlay = False
+        detector.ocr = Mock()
+        detector.ocr.image_simple_ocr.return_value = []
+        detector.ocr.string_similarity.return_value = 0.0
+        detector.locale = Mock()
+        detector.locale.all_values.return_value = ["PRESS TO DISENGAGE"]
+
+        self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+
+        self.assertGreaterEqual(regions.last_message_fraction, regions.message_text_fraction)
+        self.assertGreaterEqual(regions.last_message_line, regions.message_line_fraction)
+        self.assertEqual(regions.last_message_glyph_components, 15)
+        detector.ocr.image_simple_ocr.assert_not_called()
+
+    def test_cockpit_decor_crops_do_not_trigger_disengage_ocr(self):
+        crops = (
+            "171_crop_no-msg_type10-cockpit-decoration.png",
+            "172_crop_no-msg_type10-cockpit-decoration.png",
+        )
+        folder = FIXTURES / "screenshots" / "2160p"
+        available = [folder / name for name in crops if (folder / name).exists()]
+        if not available:
+            self.skipTest("local cockpit-decoration crops unavailable")
+
+        detector = Detector()
+        detector.ocr = Mock()
+        for path in available:
+            with self.subTest(screenshot=path.name):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+                self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+                detector.ocr.image_simple_ocr.assert_not_called()
+                self.assertFalse(
+                    regions.message_glyph_components_min
+                    <= regions.last_message_glyph_components
+                    <= regions.message_glyph_components_max
+                )
+
+    def test_scattered_glyphs_do_not_trigger_ocr_even_with_enough_total_components(self):
+        image = np.zeros((100, 100, 3), np.uint8)
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 10), (40, 10), color, 1)
+        for y in (25, 45, 65):
+            for x in range(5, 85, 10):
+                cv2.rectangle(image, (x, y), (x + 2, y + 5), color, -1)
+        regions = ScreenRegions(FakeScreen(image), self.templates)
+        detector = Detector()
+        detector.ocr = Mock()
+        self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+        self.assertEqual(regions.last_message_glyph_components, 24)
+        self.assertEqual(regions.last_message_row_glyphs, 8)
+        detector.ocr.image_simple_ocr.assert_not_called()
+
+    def test_type10_scattered_hud_crops_do_not_trigger_ocr(self):
+        folder = FIXTURES / "screenshots" / "diagnostics" / "hud-disengage"
+        available = sorted(folder.glob("type10-no-msg-*.png"))
+        if not available:
+            self.skipTest("local Type-10 HUD readout crops unavailable")
+        detector = Detector()
+        detector.ocr = Mock()
+        for path in available:
+            with self.subTest(screenshot=path.name):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+                self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+                detector.ocr.image_simple_ocr.assert_not_called()
 
 
 class FsdAlignmentPromptTestCase(MatchingTestCase):

@@ -65,8 +65,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Routes with no runnable waypoints no longer repeat indefinitely, and missing market-data updates no longer cause an endless wait.
 - Route travel no longer ends prematurely when a station destination remains after the final jump; the game's destination data determines whether local travel is needed.
 - Travel Assist no longer stops with "No local target found" after a route was cleared and re-plotted with the same next system; the system targeted in the game is used even when the journal reports no new jump target.
+- The target search area extends higher to include rings near the upper HUD edge.
+- Supercruise-message detection filters sparse cyan decorations, scattered HUD readouts and dense cyan noise before OCR. Message OCR runs in the background during approaches so target alignment can continue; stale or canceled matches cannot trigger a dropout.
 - FSD retries realign before charging again, and target alignment accounts for configured ship turn rates to reduce overshooting.
 - Compass alignment no longer steers blindly when its target is unreadable or repeatedly pitches past targets at the compass rim.
+- Conflicting weak compass readings trigger a retry instead of steering in an uncertain direction, while clearly hollow markers remain usable despite a weak filled-template vote.
 - Supercruise disengage detection continues when the target ring is lost or becomes an open arc near arrival.
 - Interdiction recovery waits for confirmed supercruise before realigning, avoiding assist aborts during the jump transition; an unconfirmed return stops with an error after a bounded wait.
 - Discovery scans no longer end after a fixed delay or get cut short by another action sharing the same key.

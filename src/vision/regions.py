@@ -3,7 +3,7 @@
 import logging
 
 import cv2
-from numpy import array, sum
+from numpy import add, array, cumsum, sum, zeros
 
 from core.logger import logger
 
@@ -109,6 +109,12 @@ class ScreenRegions:
         self.message_text_fraction = 0.005
         # The message has long horizontal cyan frame lines: at least this share of a pixel row must be message colored
         self.message_line_fraction = 0.25
+        # A prompt has several compact glyphs; cockpit decorations are usually sparse or fragmented.
+        self.message_glyph_components_min = 16
+        self.message_glyph_components_max = 80
+        self.last_message_glyph_components = 0
+        self.message_row_glyphs_min = 9
+        self.last_message_row_glyphs = 0
         # A scene counts as extremely bright (sun) when this share of the target region is almost white
         self.bright_scene_fraction = 0.5
 
@@ -134,21 +140,21 @@ class ScreenRegions:
             "filter": None,
         }
         self.reg["target"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,
             "filter": self.orange_2_color_range,
         }  # also called destination
         self.reg["target_occluded"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,
             "filter": self.white_color_range,
         }
         self.reg["target_occluded_tan"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,
@@ -348,9 +354,31 @@ class ScreenRegions:
         mask = self.filter_by_color(img, self.message_color_range) > 0
         self.last_message_fraction = float(mask.mean())
         self.last_message_line = float(mask.mean(axis=1).max())
+        _, _, stats, _ = cv2.connectedComponentsWithStats(mask.astype("uint8"), connectivity=8)
+        components = stats[1:]
+        widths = components[:, cv2.CC_STAT_WIDTH]
+        heights = components[:, cv2.CC_STAT_HEIGHT]
+        glyph_components = (
+            (widths >= 0.003 * mask.shape[1])
+            & (widths <= 0.09 * mask.shape[1])
+            & (heights >= 0.015 * mask.shape[0])
+            & (heights <= 0.20 * mask.shape[0])
+            & (widths / heights >= 0.05)
+            & (widths / heights <= 3.0)
+        )
+        self.last_message_glyph_components = int(sum(glyph_components))
+        glyphs = components[glyph_components]
+        row_counts = zeros(mask.shape[0] + 1, dtype=int)
+        add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP], 1)
+        add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP] + glyphs[:, cv2.CC_STAT_HEIGHT], -1)
+        self.last_message_row_glyphs = int(cumsum(row_counts).max())
         return (
             self.last_message_fraction >= self.message_text_fraction
             and self.last_message_line >= self.message_line_fraction
+            and self.message_glyph_components_min
+            <= self.last_message_glyph_components
+            <= self.message_glyph_components_max
+            and self.last_message_row_glyphs >= self.message_row_glyphs_min
         )
 
     def message_image(self, region_name="disengage", raw=False, upscale=1):

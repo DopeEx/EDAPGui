@@ -139,13 +139,17 @@ Visible-target detection also checks templates 5% smaller and larger, but only w
 below the existing match threshold. All variants reuse the same filtered capture. Alignment uses the circle
 center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
 path so a recognized visible ring is not treated as missing. Targets obscured by cockpit structure or other
-HUD elements can still require compass realignment.
+HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
+to include rings near the previous upper boundary.
 
 Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers
 are checked separately so a behind marker is not mistaken for an ahead dot. A rejected filled-template match
-cannot validate a weak behind-template match. Unknown markers still stop compass alignment rather than providing
-a guessed direction. This is one shared recognition path for SDR/HDR and both HUD color schemes, not a
+cannot validate a weak behind-template match. A filled-blob fallback that disagrees with the template direction
+is treated as unknown, so alignment retries rather than steering from a guess. A morphologically recognized hollow
+marker can override a weak filled-template vote, including when the marker is visible near the compass rim.
+Unknown markers still stop compass alignment rather than providing a guessed direction. This is one shared
+recognition path for SDR/HDR and both HUD color schemes, not a
 resolution-specific mode. Real monitor/HDR and HUD-brightness combinations still require in-game validation.
 If a dim hollow marker merges with the compass rim or charging glow, an additional fallback checks for one
 compact dark hole with a brighter surrounding ring. It requires contrast in at least seven of eight directions
@@ -157,6 +161,18 @@ Set **Debug > Log level > Debug** before reproducing a recognition problem. Norm
 program run; up to ten older files are kept for each. The GUI's log-file button opens `autopilot.log`.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
+The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
+the same horizontal scanline, in addition to the color-area and line checks. This rejects sparse cockpit decorations,
+scattered HUD readouts and dense cyan noise without increasing the total glyph-count requirement.
+
+During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
+target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.
+A recognized prompt must still have an active message pre-check and a supercruise journal state when consumed;
+matches more than five seconds old are discarded. Stop requests, target changes, approach completion and a new
+approach invalidate earlier jobs. An already-running inference cannot be interrupted, but its result is discarded
+and no second job starts until it finishes. Calls using the same OCR engine are serialized, including lazy result
+iteration. This avoids concurrent engine access but does not reduce OCR CPU cost; responsiveness under game load
+still requires in-game validation. Negative results remain available for Debug diagnostics even after five seconds.
 The optional CV view draws match boxes on display copies; it does not alter the recognition images or saved context.
 Raw BGRA-backed OCR crops are copied into writable display images before annotations are drawn.
 Its windows are managed by the main GUI thread and open within the work area of the monitor containing the main window.
@@ -202,7 +218,9 @@ and is excluded from Git along with the rest of `user_data/`.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
 - An unconfirmed trade dialog saves its separately captured title and commodity regions and a later dialog context.
-  OCR wait timeouts, unreadable disengage messages and ambiguous alignment or line-of-sight text can also save cases.
+  OCR wait timeouts, unreadable or unmatched disengage OCR results, and ambiguous alignment or line-of-sight text
+  can also save cases. Disengage mismatches save one case per continuous message-gate event, including when OCR
+  returns readable but unrelated text. Canceled or superseded jobs are not reported as completed OCR failures.
 
 The program cannot automatically detect every wrong recognition: an apparently successful match can still be wrong.
 Not every absence of HUD text is an error. Images and logs can contain player information; review and remove sensitive
