@@ -159,7 +159,7 @@ class StatusParser:
         # Format the datetime object back into a string
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def get_cleaned_data(self):
+    def get_cleaned_data(self, timeout: float | None = None):
         """Loads data from the JSON file and returns cleaned data with only the necessary fields.
         {
         "timestamp":"2024-09-28T16:01:47Z",
@@ -185,6 +185,7 @@ class StatusParser:
             }
         }
         """
+        deadline = time.monotonic() + timeout if timeout is not None else None
         # Check if file changed
         if self.get_file_modified_time() == self.last_mod_time:
             # logger.debug(f'Status.json mod timestamp {self.last_mod_time} unchanged.')
@@ -195,6 +196,8 @@ class StatusParser:
         attempt = 1
         backoff = 0.1
         while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("Status.json could not be read within the requested timeout.")
             if os.access(self.file_path, os.R_OK):
                 try:
                     with open(self.file_path, "r", encoding="utf-8") as file:
@@ -204,10 +207,13 @@ class StatusParser:
                         break
                 except Exception:
                     logger.debug("An error occurred reading Status.json file. File may be open.")
-                    sleep(backoff)
+                    delay = backoff if deadline is None else min(backoff, max(0, deadline - time.monotonic()))
+                    sleep(delay)
                     logger.debug("Attempting to re-read Status.json file after delay.")
                     backoff *= 2
                     attempt = attempt + 1
+            elif deadline is not None:
+                sleep(min(0.1, max(0, deadline - time.monotonic())))
 
         # Combine flags from Flags and Flags2 into a single dictionary
         # combined_flags = {**self.translate_flags(data['Flags'])}

@@ -1,104 +1,213 @@
 """AFK combat in a resource extraction site (see Type 10 AFK videos).
 
 Monitors the shields; if they are lost it boosts and supercruises away, drops out later,
-sets pips to system/weapons and deploys the fighter. A destroyed fighter is replaced
-if another fighter is ready. The ship must point away from the site at the start."""
+sets pips for shield recovery and attempts an NPC fighter launch. Launches require journal
+confirmation; hangar readiness is not checked. The ship must point away from the site at the start."""
 
-from time import sleep
+from time import monotonic, sleep
+from typing import Literal
+
+from core.constants import (
+    FlagsCargoScoopDeployed,
+    FlagsDocked,
+    FlagsFsdCharging,
+    FlagsFsdCooldown,
+    FlagsFsdJump,
+    FlagsFsdMassLocked,
+    FlagsHardpointsDeployed,
+    FlagsInMainShip,
+    FlagsLanded,
+    FlagsLandingGearDown,
+    FlagsSupercruise,
+)
+from core.logger import logger
+
+SUPERCRUISE_ENTRY_TIMEOUT = 120.0
+SUPERCRUISE_EXIT_TIMEOUT = 30.0
+FIGHTER_LAUNCH_TIMEOUT = 30.0
+POLL_INTERVAL = 0.5
+POWER_CONFIRM_TIMEOUT = 5.0
 
 
 class AfkCombat:
-    # TODO: consider the following enhancements
-    #  - If a key is not mapped need to list which are needed and exit
-    #  - Need key for commanding fighter to 'attack at will' or defend
-    #  - After retreat complete, could go into while loop looking for "UnderAttack" or
-    #    simply go back into shields down logic again. Would have to wait until shields are up
-
-    def __init__(self, k, journal, v=None):
+    def __init__(self, k, journal, status=None):
         self.k = k
         self.jn = journal
-        self.voice = v
         self.fighter_bay = 2
+        self.status = status
+        self.failure_reason = None
 
-    def check_shields_up(self):
-        return self.jn.ship_state()["shieldsup"]
+    def _fail(self, message):
+        self.failure_reason = message
+        logger.warning("AFK combat: %s", message)
+        return False
 
-    def check_fighter_destroyed(self):
-        des = self.jn.ship_state()["fighter_destroyed"]
-        self.jn.ship_state()["fighter_destroyed"] = False  # reset it to false after we read it
+    def _flags(self, deadline=None):
+        timeout = 5.0 if deadline is None else min(5.0, max(0.0, deadline - monotonic()))
+        return self.status.get_cleaned_data(timeout=timeout)["Flags"]
+
+    def _wait_for_power(self, expected: dict[str, float]) -> bool:
+        deadline = monotonic() + POWER_CONFIRM_TIMEOUT
+        observed = None
+        while monotonic() < deadline:
+            remaining = max(0.0, deadline - monotonic())
+            observed = self.status.get_cleaned_data(timeout=remaining).get("pips")
+            if observed == expected:
+                logger.debug("AFK combat: power distribution confirmed: %s", observed)
+                return True
+            sleep(POLL_INTERVAL)
+        logger.debug("AFK combat: power confirmation failed: expected=%s, observed=%s", expected, observed)
+        return self._fail("Power distribution was not confirmed; take control of the ship.")
+
+    def _set_power(self, priority: Literal["engine", "system"]) -> bool:
+        logger.debug("AFK combat: resetting power distribution, priority=%s", priority)
+        self.k.send("ResetPowerDistribution")
+        if not self._wait_for_power({"system": 2.0, "engine": 2.0, "weapons": 2.0}):
+            return False
+        # Saturate the secondary capacitor first, then the priority capacitor, draining weapons.
+        if priority == "engine":
+            self.k.send("IncreaseSystemsPower", repeat=4)
+            self.k.send("IncreaseEnginesPower", repeat=6)
+            expected = {"system": 2.0, "engine": 4.0, "weapons": 0.0}
+        else:
+            self.k.send("IncreaseEnginesPower", repeat=4)
+            self.k.send("IncreaseSystemsPower", repeat=6)
+            expected = {"system": 4.0, "engine": 2.0, "weapons": 0.0}
+        return self._wait_for_power(expected)
+
+    def check_shields_up(self, state=None):
+        if state is None:
+            state = self.jn.ship_state()
+        return state["shieldsup"]
+
+    def check_fighter_destroyed(self, state=None):
+        if state is None:
+            state = self.jn.ship_state()
+        des = state["fighter_destroyed"]
+        state["fighter_destroyed"] = False
         return des
 
     def evade(self):
-        # boost and prep for supercruise
-        if self.voice is not None:
-            self.voice.say("Boosting, reconfiguring")
+        self.failure_reason = None
+        if self.status is None:
+            return self._fail("Status monitoring is unavailable; evasion was not started.")
+        deadline = monotonic() + SUPERCRUISE_ENTRY_TIMEOUT
+        flags = self._flags(deadline)
+        if not flags & FlagsInMainShip or flags & (FlagsDocked | FlagsLanded | FlagsSupercruise):
+            return self._fail("Evasion requires the main ship in normal space.")
         self.k.send("SetSpeed100", repeat=2)
-        self.k.send("DeployHardpointToggle")
-        self.k.send("IncreaseEnginesPower", repeat=4)
+        for flag, binding in (
+            (FlagsHardpointsDeployed, "DeployHardpointToggle"),
+            (FlagsLandingGearDown, "LandingGearToggle"),
+            (FlagsCargoScoopDeployed, "ToggleCargoScoop"),
+        ):
+            if flags & flag:
+                self.k.send(binding)
+        if not self._set_power("engine"):
+            return False
         self.k.send("UseBoostJuice")
         sleep(2)
 
-        # while the ship is not in supercruise: booster and attempt supercruise
-        # could be mass locked for a bit
-        while self.jn.ship_state()["status"] == "in_space":
-            if self.voice is not None:
-                self.voice.say("Boosting, commanding supercruise")
-            self.k.send("UseBoostJuice")
-            sleep(1)
-            self.k.send("HyperSuperCombination")
-            sleep(9)
-
-        # in supercruise, wait a bit to get away, then throttle 0 and exit supercruise, full pips to system
-        if self.voice is not None:
-            self.voice.say("In supercruise, retreating from site")
+        attempt = 0
+        awaiting_charge = False
+        next_attempt = monotonic()
+        while monotonic() < deadline:
+            flags = self._flags(deadline)
+            if flags & FlagsSupercruise:
+                logger.debug("AFK combat: supercruise entry confirmed")
+                break
+            if not flags & FlagsInMainShip or flags & (FlagsDocked | FlagsLanded):
+                return self._fail("The main ship is no longer in flight; evasion stopped.")
+            if awaiting_charge and flags & (FlagsFsdCharging | FlagsFsdJump):
+                logger.debug("AFK combat: FSD charging/jump detected for supercruise attempt %s", attempt)
+                awaiting_charge = False
+            if monotonic() >= next_attempt:
+                if not flags & (FlagsFsdCharging | FlagsFsdJump):
+                    if awaiting_charge:
+                        logger.debug(
+                            "AFK combat: no FSD charging detected after supercruise attempt %s; "
+                            "retry window reached, cause unknown",
+                            attempt,
+                        )
+                        awaiting_charge = False
+                    self.k.send("UseBoostJuice")
+                    blocked = flags & (
+                        FlagsFsdMassLocked
+                        | FlagsFsdCooldown
+                        | FlagsHardpointsDeployed
+                        | FlagsLandingGearDown
+                        | FlagsCargoScoopDeployed
+                    )
+                    if not blocked:
+                        attempt += 1
+                        logger.debug("AFK combat: supercruise attempt %s, flags=%s", attempt, flags)
+                        self.k.send("Supercruise")
+                        awaiting_charge = True
+                    else:
+                        logger.debug("AFK combat: boosting while supercruise is blocked, flags=%s", flags)
+                next_attempt = monotonic() + 10.0
+            sleep(POLL_INTERVAL)
+        else:
+            return self._fail("Supercruise entry was not confirmed within 120 seconds; take control of the ship.")
 
         sleep(1)
         self.k.send("SetSpeed100", repeat=2)
         sleep(20)
         self.k.send("SetSpeedZero")
         sleep(10)
-        if self.voice is not None:
-            self.voice.say("Exiting supercruise, all power to system and weapons")
-        self.k.send("HyperSuperCombination", repeat=2)
-        sleep(7)
-        self.k.send("IncreaseSystemsPower", repeat=3)
-        self.k.send("IncreaseWeaponsPower", repeat=3)
+        if not self._flags() & FlagsSupercruise:
+            return self._fail("Supercruise ended before the planned exit; take control of the ship.")
+        self.k.send("Supercruise")
+        deadline = monotonic() + SUPERCRUISE_EXIT_TIMEOUT
+        while monotonic() < deadline:
+            flags = self._flags(deadline)
+            if not flags & FlagsSupercruise and not flags & (FlagsFsdCharging | FlagsFsdJump):
+                if not flags & FlagsInMainShip or flags & (FlagsDocked | FlagsLanded):
+                    return self._fail("Normal-space flight was not confirmed after evasion.")
+                logger.debug("AFK combat: normal-space exit confirmed")
+                break
+            sleep(POLL_INTERVAL)
+        else:
+            return self._fail("Supercruise exit was not confirmed within 30 seconds; take control of the ship.")
+        return self._set_power("system")
 
     def launch_fighter(self):
-        # menu select figher deploy
-        if self.voice is not None:
-            self.voice.say("Deploying fighter")
+        self.failure_reason = None
+        if self.status is not None:
+            flags = self._flags()
+            if not flags & FlagsInMainShip or flags & (
+                FlagsDocked | FlagsLanded | FlagsSupercruise | FlagsFsdCharging | FlagsFsdJump
+            ):
+                return self._fail("Fighter deployment requires the main ship in normal space.")
+        cursor = self.jn.ship_state()["fighter_launch_sequence"]
         self.k.send("HeadLookReset")
-        self.k.send("UIFocus", state=1)
-        self.k.send("UI_Down")
-        self.k.send("UIFocus", state=0)
+        try:
+            self.k.send("UIFocus", state=1)
+            self.k.send("UI_Down")
+        finally:
+            self.k.send("UIFocus", state=0)
         sleep(0.2)
 
-        # Reset to top, go left x2, go up x3
         self.k.send("UI_Left", repeat=2)
         self.k.send("UI_Up", repeat=3)
         sleep(0.1)
 
-        # Down to fighter and then Right then will be over deploy button
         self.k.send("UI_Down")
         self.k.send("UI_Right")
         sleep(0.1)
 
-        # go to top fighter bay selection
         self.k.send("UI_Up")
 
-        # toggle between fighter bays, if a fighter gets restored, that bay is busy
-        # rebuilding so need to us the other one
+        # Menu rows alternate without checking hangar readiness.
+        logger.debug("AFK combat: selecting fighter bay menu row %s", self.fighter_bay)
         if self.fighter_bay == 2:
             self.k.send("UI_Down")
             self.fighter_bay = 1
         else:
             self.fighter_bay = 2
 
-        # Deploy should be highlighted, Select it
         self.k.send("UI_Select")
 
-        # select which pilot
         self.k.send("UI_Up", repeat=4)  # ensure top entry selected
         self.k.send("UI_Down")  # go down one and select the hired pilot
         self.k.send("UI_Select")
@@ -106,80 +215,15 @@ class AfkCombat:
         sleep(0.2)
         self.k.send("UI_Back")
         self.k.send("HeadLookReset")
-        #
-        # Command fighter to attack at will
-        # self.k.send().... ??OrderAggressiveBehaviour
         self.k.send("SetSpeedZero")
-
-
-"""
-
-Uncomment this whole block below to run this standalone:  >python afk-combat.py
-
-Hotkeys:
-  Alt + q - quit program
-  Alt + s - force shield down event
-  Alt + f - force fighter destroy event
-  Alt + d - dump the states
-
-"""
-
-"""Remove this line and last line at button to uncomment the blow of code below
-
-inp = None
-
-def key_callback(name):
-    global inp
-    inp = name
-
-
-def main():
-    global inp
-    k = EDKeys()
-    jn = EDJournal()
-    v = Voice()
-    v.set_on()
-
-    afk = AfkCombat(k, jn, v)
-    v.say(" AFK Combat Assist active")
-
-    print("Hot keys\n alt+q = Quit\n alt+s = force shield down event\n alt+f = force fighter destroy event\n alt+d = dump state\n")
-    # trap specific hotkeys
-    keyboard.add_hotkey('alt+q', key_callback, args =('q'))
-    keyboard.add_hotkey('alt+s', key_callback, args =('s'))
-    keyboard.add_hotkey('alt+f', key_callback, args =('f'))
-    keyboard.add_hotkey('alt+d', key_callback, args =('d'))
-
-    while True:
-        inp = None
-        sleep(2)
-
-        if inp == 'q':
-            break
-
-        if inp == 'd':
-            print (jn.ship_state())
-
-        if afk.check_shields_up() == False or inp == 's':
-            afk.set_focus_elite_window()
-            v.say("Shields down, evading")
-            afk.evade()
-            # after supercruise the menu is reset to top
-            afk.launch_fighter()  # at new location launch fighter
-            break
-
-        if afk.check_fighter_destroyed() == True or inp == 'f':
-            afk.set_focus_elite_window()
-            v.say("Fighter Destroyed, redeploying")
-            afk.launch_fighter()  # assuming two fighter bays
-
-
-    v.say("Terminating AFK Combat Assist")
-    sleep(1)
-    v.quit()
-
-
-if __name__ == "__main__":
-    main()
-
-"""
+        logger.debug("AFK combat: fighter deployment input sequence sent; waiting for LaunchFighter")
+        deadline = monotonic() + FIGHTER_LAUNCH_TIMEOUT
+        while monotonic() < deadline:
+            state = self.jn.ship_state()
+            if state["fighter_launch_sequence"] > cursor:
+                if state["fighter_launch_player_controlled"] is not False:
+                    return self._fail("The fighter launch was not confirmed as NPC-controlled; assist stopped.")
+                logger.debug("AFK combat: NPC fighter launch confirmed by LaunchFighter")
+                return True
+            sleep(POLL_INTERVAL)
+        return self._fail("NPC fighter launch was not confirmed within 30 seconds; assist stopped.")

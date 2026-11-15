@@ -210,6 +210,7 @@ class PlanTestCase(unittest.TestCase):
                     "UI_Right",
                     "UI_Up",
                     "IncreaseEnginesPower",
+                    "ResetPowerDistribution",
                     "UI_Down",
                 },
                 actions,

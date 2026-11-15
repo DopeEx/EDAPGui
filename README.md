@@ -29,7 +29,11 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
   See the [waypoint guide](docs/Waypoint.md) for setup, usage and limitations.
 - **Single Waypoint Assist** plots and travels to a system entered on the Debug tab.
 - **DSS Assist** runs a discovery scan when entering systems in supercruise.
-- **AFK Combat Assist** monitors shields and fighter status in a combat zone.
+- **AFK Combat Assist** responds to shield and fighter losses, confirms escape transitions and NPC fighter launches,
+  prioritizes engines during escape and systems after dropout, and stops with a warning if confirmation fails.
+  Evasion and fighter-deployment status changes also use the enabled voice output.
+  See [other assists](docs/Workflows.md#other-assists) for requirements
+  and limitations.
 - **Status overlay** shows the assist mode and status, ship status, fuel, current system, route destination, next star,
   jumps, route distance and an optional learned ETA on top of the game, with progress bars for jumps and distance.
   ETA combines remaining system travel time with arrival in your PC's local time; it excludes station travel and trading.

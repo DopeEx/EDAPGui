@@ -62,11 +62,14 @@ def _overlay_status_role(status: str) -> str:
         "Approaching target",
         "Docking",
         "DSS Scan",
+        "Deploying fighter",
+        "Evading",
         "Entering supercruise",
         "Executing Undocking/Launch",
         "Jump",
         "Logout",
         "Maneuvering",
+        "Monitoring shields",
         "Refueling",
         "Refueling and repairing",
         "Requesting docking",
@@ -351,9 +354,9 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         logger.info(f"Screen {self.scr.screen_width}x{self.scr.screen_height}")
         self.keys = EDKeys(self.ap_ckb)
         self.keys.activate_window = self.config["ActivateEliteEachKey"]
-        self.afk_combat = AfkCombat(self.keys, self.jn, self.vce)
         self.waypoint = EDWayPoint(self, self.jn.ship_state()["odyssey"])
         self.status = StatusParser()
+        self.afk_combat = AfkCombat(self.keys, self.jn, status=self.status)
         # Separate parser: the overlay refresh thread must not share the AP thread's parser state.
         self._overlay_status = StatusParser()
         self.nav_route = NavRouteParser()
@@ -853,11 +856,13 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         if self.statistics is not None:
             self.statistics.end_assist()
 
-    def set_ap_status(self, txt):
-        """Publish the current AP status to the overlay and GUI."""
+    def set_ap_status(self, txt, speak=False):
+        """Publish the current AP status to the overlay and GUI, optionally speaking it."""
         self.ap_state = txt
         self.update_overlay()
         self.ap_ckb("ap_status", txt)
+        if speak and self.vce is not None:
+            self.vce.say(txt)
 
     def notify_user(self, message, speak=False):
         """Publish an intentional user-facing message to the GUI log only."""
@@ -1084,6 +1089,9 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                     self.afk_combat_loop()
                 except EdapInterruptError:
                     logger.debug("Stopping afk_combat")
+                except Exception as error:
+                    logger.exception("Unexpected error in AFK Combat Assist")
+                    self.notify_user(f"AFK Combat Assist stopped: {error}", speak=True)
                 self.afk_combat_assist_enabled = False
                 self._finish_assist("afk_stop")
 

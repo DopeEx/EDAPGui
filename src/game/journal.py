@@ -134,6 +134,8 @@ class EDJournal:
             "star_class": None,
             "target": None,
             "fighter_destroyed": False,
+            "fighter_launch_sequence": 0,
+            "fighter_launch_player_controlled": None,
             "shieldsup": True,
             "under_attack": None,
             "interdicted": False,
@@ -238,6 +240,10 @@ class EDJournal:
 
             elif log_event == "FighterDestroyed":
                 self.ship["fighter_destroyed"] = True
+            elif log_event == "LaunchFighter":
+                self.ship["fighter_destroyed"] = False
+                self.ship["fighter_launch_sequence"] += 1
+                self.ship["fighter_launch_player_controlled"] = log.get("PlayerControlled")
 
             elif log_event == "FSSDiscoveryScan":
                 self.ship["discovery_scans"] += 1
