@@ -139,7 +139,8 @@ Visible-target detection also checks templates 5% smaller and larger, but only w
 below the existing match threshold. All variants reuse the same filtered capture. Alignment uses the circle
 center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
 path so a recognized visible ring is not treated as missing. Targets obscured by cockpit structure or other
-HUD elements can still require compass realignment.
+HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
+to include rings near the previous upper boundary.
 
 Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers

@@ -134,21 +134,21 @@ class ScreenRegions:
             "filter": None,
         }
         self.reg["target"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,
             "filter": self.orange_2_color_range,
         }  # also called destination
         self.reg["target_occluded"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,
             "filter": self.white_color_range,
         }
         self.reg["target_occluded_tan"] = {
-            "rect": [0.33, 0.27, 0.66, 0.70],
+            "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
             "height": 1,
             "filterCB": self.filter_by_color,

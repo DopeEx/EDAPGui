@@ -19,7 +19,7 @@ from core.constants import FlagsBeingInterdicted, FlagsFsdJump, FlagsSupercruise
 from core.types import EdapInterruptError
 from gui.cv_view import CvFrames
 from routines.flight import FlightMixin
-from tests.helpers import FIXTURES, FakeScreen, load_fixture_image, load_screenshot, pad_to_region
+from tests.helpers import FIXTURES, FakeScreen, ScreenshotScreen, load_fixture_image, load_screenshot, pad_to_region
 from vision.detection import DetectionMixin
 from vision.regions import ScreenRegions
 from vision.templates import ImageTemplates
@@ -456,6 +456,28 @@ class CompassTestCase(MatchingTestCase):
 
 
 class TargetTestCase(MatchingTestCase):
+    def test_target_crossing_previous_search_top_is_detected(self):
+        height, width = 2160, 3840
+        image = np.zeros((height, width, 3), np.uint8)
+        template = self.templates.template["target"]["image"]
+        x = (width - template.shape[1]) // 2
+        y = int(0.27 * height) - 25
+        color = cv2.cvtColor(np.uint8([[[20, 200, 240]]]), cv2.COLOR_HSV2BGR)[0, 0]
+        image[y : y + template.shape[0], x : x + template.shape[1]][template > 128] = color
+
+        old_regions = ScreenRegions(ScreenshotScreen(image), self.templates)
+        old_rect = old_regions.reg["target"]["rect"]
+        old_rect[1] = int(0.27 * height)
+        old_regions.reg["target"]["height"] = old_rect[3] - old_rect[1]
+        _, old_result, _ = old_regions.match_target_multiscale()
+        self.assertLess(old_result[1], old_regions.target_thresh)
+
+        regions = ScreenRegions(ScreenshotScreen(image), self.templates)
+        _, result, selected = regions.match_target_multiscale()
+        self.assertGreaterEqual(result[1], regions.target_thresh)
+        self.assertIs(selected, template)
+        self.assertIsNotNone(Detector().get_destination_offset(regions))
+
     def test_scaled_target_has_the_correct_circle_center_and_is_not_hidden(self):
         for height in (1080, 2160):
             templates = ImageTemplates(height)
@@ -537,6 +559,47 @@ class TargetTestCase(MatchingTestCase):
                 self.assertEqual(selected.shape, (201, 174))
                 self.assertIsNotNone(Detector().get_destination_offset(regions))
 
+    def test_local_target_near_previous_search_top_is_detected(self):
+        fixtures = (
+            ("169_crop_target-upper-edge_type10_context.png", 0.27),
+            ("170_crop_target-upper-edge_type10_context.png", 0.25),
+        )
+        available = [
+            (FIXTURES / "screenshots" / "2160p" / name, source_top)
+            for name, source_top in fixtures
+            if (FIXTURES / "screenshots" / "2160p" / name).exists()
+        ]
+        if not available:
+            self.skipTest("local upper-edge target context unavailable")
+
+        width, height = 3840, 2160
+        old_width = int(0.66 * width) - int(0.33 * width)
+        for path, source_top in available:
+            with self.subTest(screenshot=path.name):
+                context = load_screenshot(path)
+                source_top = int(source_top * height)
+                source_height = int(0.70 * height) - source_top
+                context_left = (context.shape[1] - old_width) // 2
+                context_top = (context.shape[0] - source_height) // 2
+                old_roi = context[context_top : context_top + source_height, context_left : context_left + old_width]
+                old_regions = ScreenRegions(FakeScreen(old_roi, width=width, height=height), self.templates)
+                _, old_result, _ = old_regions.match_target_multiscale()
+                self.assertLess(old_result[1], old_regions.target_thresh)
+
+                regions = ScreenRegions(FakeScreen(context, width=width, height=height), self.templates)
+                rect = regions.reg["target"]["rect"]
+                expanded_top = context_top - (source_top - rect[1])
+                expanded_height = rect[3] - rect[1]
+                target_roi = context[
+                    expanded_top : expanded_top + expanded_height, context_left : context_left + old_width
+                ]
+                self.assertEqual(target_roi.shape[:2], (expanded_height, old_width))
+
+                regions = ScreenRegions(FakeScreen(target_roi, width=width, height=height), self.templates)
+                _, result, _ = regions.match_target_multiscale()
+                self.assertGreaterEqual(result[1], regions.target_thresh)
+                self.assertIsNotNone(Detector().get_destination_offset(regions))
+
     def test_text_and_unselected_circles_are_not_targets(self):
         for scene in ("text", "circle"):
             with self.subTest(scene=scene):
@@ -553,7 +616,7 @@ class TargetTestCase(MatchingTestCase):
 
         self.assertIsNotNone(offset)
         self.assertAlmostEqual(offset["x"], -475.6, delta=5)
-        self.assertAlmostEqual(offset["y"], 220.9, delta=5)
+        self.assertAlmostEqual(offset["y"], 263.9, delta=5)
 
     def test_target_match_score_and_offset_are_logged(self):
         with self.assertLogs("ed_log", level="DEBUG") as captured:
