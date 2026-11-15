@@ -28,7 +28,8 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
   Rare goods held in cargo can be selected for sale even when the market reports zero demand.
   See the [waypoint guide](docs/Waypoint.md) for setup, usage and limitations.
 - **Single Waypoint Assist** plots and travels to a system entered on the Debug tab.
-- **DSS Assist** runs a discovery scan when entering systems in supercruise.
+- **Honk Assist** attempts a Discovery Scanner scan after entering each new system in supercruise. Analysis Mode is
+  required.
 - **AFK Combat Assist** responds to shield and fighter losses, confirms escape transitions and NPC fighter launches,
   prioritizes engines during escape and systems after dropout, and stops with a warning if confirmation fails.
   Evasion and fighter-deployment status changes also use the enabled voice output.

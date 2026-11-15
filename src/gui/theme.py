@@ -27,7 +27,7 @@ ICONS = {
     "travel": "\ue707",
     "waypoint": "\ue81d",
     "afk": "\ue7ba",
-    "dss": "\ue774",
+    "discovery_scan": "\ue774",
     "stop": "\ue71a",
     "power": "\ue7e8",
     "pin": "\ue718",

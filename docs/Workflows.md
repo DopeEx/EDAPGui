@@ -65,8 +65,8 @@ ever receiving the same ID; it does not imply that the game normally reuses IDs.
 Two ships of the same type therefore have independent histories. Switching account or ship ends the active
 measurement chain. There is no reset button.
 
-Travel, Waypoint and Single Waypoint flight contribute active assist time. Target-only plotting, DSS and AFK Combat
-do not contribute. System travel time covers the FSD route phase, including alignment, charging, hyperspace,
+Travel, Waypoint and Single Waypoint flight contribute active assist time. Target-only plotting, Honk Assist and AFK
+Combat do not contribute. System travel time covers the FSD route phase, including alignment, charging, hyperspace,
 intermediate refueling and positioning. It ends on arrival at the plotted destination, before final-system refueling,
 station approach, docking or trading. Local actions contribute only to overall active assist time.
 
@@ -233,8 +233,10 @@ an exact name match and confirmation from game state.
 
 ### Other assists
 
-- **DSS Assist** monitors the current system while in supercruise and attempts a discovery scan after entering a
-  different system.
+- **Discovery Scanner Assist** is labeled **Honk Assist** in the sidebar. While in supercruise, it attempts the
+  Discovery Scanner (D-Scanner/Honk) after entering a different system; Analysis Mode is required. Only a
+  journal-confirmed scan counts as completed. If a scan fails, the same system is not fired on repeatedly; the assist
+  can retry after leaving supercruise, entering another system, or restarting the assist.
 - **Single Waypoint Assist** selects a system entered on the Debug tab and travels there; it can also be given a
   local station target. It uses the same next-jump target checks as Waypoint Assist.
 - **AFK Combat Assist** monitors shield and fighter status, reports its monitoring, evasion and fighter-deployment

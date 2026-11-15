@@ -668,19 +668,19 @@ class FlightMixin:
         self.nav_align(scr_reg)
         self.keys.send("SetSpeed50")
 
-    def honk(self, max_attempts=3, attempt_timeout=10):
+    def discovery_scan(self, max_attempts=3, attempt_timeout=10):
         """Do the Discovery Scan (Honk). The scan counts as done when the journal reports
         FSSDiscoveryScan; otherwise it is retried up to max_attempts times."""
 
         if not self.status.get_flag(FlagsAnalysisMode):
-            self.ap_ckb("log", "Not in analysis mode. Skipping discovery scan (honk).")
+            self.ap_ckb("log", "Not in Analysis Mode. Skipping Discovery Scanner (Honk).")
             return False
 
-        fire = "PrimaryFire" if self.config["DSSButton"] == "Primary" else "SecondaryFire"
+        fire = "PrimaryFire" if self.config["DiscoveryScanButton"] == "Primary" else "SecondaryFire"
         scans_before = self.jn.ship_state()["discovery_scans"]
 
         for attempt in range(1, max_attempts + 1):
-            logger.debug(f"position=scanning, attempt {attempt}/{max_attempts}")
+            logger.debug("discovery_scan attempt %s/%s", attempt, max_attempts)
             try:
                 # Hold the button until the journal reports the finished scan.
                 self.keys.send(fire, state=1)
@@ -688,7 +688,7 @@ class FlightMixin:
                 while time.time() < end_time:
                     sleep(0.25)
                     if self.jn.ship_state()["discovery_scans"] > scans_before:
-                        logger.debug("position=scanning complete")
+                        logger.debug("discovery_scan complete")
                         return True
             finally:
                 self.keys.send(fire, state=0)

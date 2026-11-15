@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from core.config import migrate_discovery_scan_config
 from gui import fields, window_state
 from gui.cv_view import CvFrames
 from gui.fields import TAB_OVERLAY
@@ -112,6 +113,15 @@ class FieldsTestCase(unittest.TestCase):
         self.assertEqual(fields.read(field, ap), "Info")
         fields.write(field, ap, "Debug")
         ap.set_log_debug.assert_called_once_with(True)
+
+    def test_discovery_scan_button_migrates_legacy_setting_and_keeps_new_value(self):
+        config = {"DSSButton": "Secondary"}
+        migrate_discovery_scan_config(config)
+        self.assertEqual(config, {"DiscoveryScanButton": "Secondary"})
+
+        config = {"DSSButton": "Primary", "DiscoveryScanButton": "Secondary"}
+        migrate_discovery_scan_config(config)
+        self.assertEqual(config, {"DiscoveryScanButton": "Secondary"})
 
 
 class WindowStateTestCase(unittest.TestCase):

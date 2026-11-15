@@ -64,7 +64,7 @@ EDAPGui/
 |   |   `-- __init__.py             # Package marker
 |   |-- routines/
 |   |   |-- flight.py               # Alignment, jumps, docking, and refueling
-|   |   |-- assists.py              # FSD, SC, DSS, and single-waypoint assists
+|   |   |-- assists.py              # FSD, SC, Discovery Scanner, and single-waypoint assists
 |   |   |-- waypoints.py            # Waypoint progress, visits, and trade actions
 |   |   |-- afk_combat.py           # AFK combat evasion and fighter actions
 |   |   `-- __init__.py             # Package marker

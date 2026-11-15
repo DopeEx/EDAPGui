@@ -61,7 +61,7 @@ def _make_route_overlay(route_data, ship_state):
     autopilot.travel_assist_enabled = False
     autopilot.waypoint_assist_enabled = False
     autopilot.afk_combat_assist_enabled = False
-    autopilot.dss_assist_enabled = False
+    autopilot.discovery_scan_assist_enabled = False
     autopilot.ap_state = "Idle"
     autopilot.jn = SimpleNamespace(ship_state=lambda: ship_state)
     autopilot.nav_route = SimpleNamespace(get_nav_route_data=lambda: route_data)
@@ -190,7 +190,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.travel_assist_enabled = False
         autopilot.waypoint_assist_enabled = False
         autopilot.afk_combat_assist_enabled = False
-        autopilot.dss_assist_enabled = False
+        autopilot.discovery_scan_assist_enabled = False
         autopilot.ap_state = "Idle"
         autopilot.jn = SimpleNamespace(
             ship_state=lambda: {"status": "in_supercruise", "star_class": "G", "location": "Sol"}
@@ -1017,7 +1017,7 @@ class OverlayRenderingTests(unittest.TestCase):
             ("travel_assist_enabled", "travel_assist", "travel_stop"),
             ("waypoint_assist_enabled", "waypoint_assist", "waypoint_stop"),
             ("afk_combat_assist_enabled", "afk_combat_loop", "afk_stop"),
-            ("dss_assist_enabled", "dss_assist", "dss_stop"),
+            ("discovery_scan_assist_enabled", "discovery_scan_assist", "discovery_scan_stop"),
             ("single_waypoint_enabled", "single_waypoint_assist", "single_waypoint_stop"),
         )
         endings = (("interrupted", EdapInterruptError()), ("finished", None))
@@ -1083,6 +1083,43 @@ class OverlayRenderingTests(unittest.TestCase):
                                 if ending == "target-confirmed"
                                 else "Waypoint target could not be confirmed. No flight was started."
                             )
+
+    def test_discovery_scan_unexpected_error_is_reported_and_assist_is_finished(self):
+        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot.terminate = False
+        autopilot.refresh_game_language = Mock(return_value=True)
+        autopilot.gui_loaded = False
+        autopilot._sc_sco_active_loop_thread = Mock(is_alive=Mock(return_value=True))
+        autopilot.travel_assist_enabled = False
+        autopilot.waypoint_assist_enabled = False
+        autopilot.afk_combat_assist_enabled = False
+        autopilot.discovery_scan_assist_enabled = True
+        autopilot.single_waypoint_enabled = False
+        autopilot._waypoint_plot = None
+        autopilot.update_overlay = Mock()
+        autopilot.discovery_scan_assist = Mock(side_effect=RuntimeError("scan failed"))
+        autopilot.notify_user = Mock()
+        autopilot.ap_ckb = Mock()
+        autopilot._end_statistics_assist = Mock()
+        autopilot.set_ap_status = Mock()
+        autopilot.update_route_info = Mock()
+
+        def stop_loop(_seconds):
+            autopilot.terminate = True
+
+        with (
+            patch("core.autopilot.set_focus_elite_window"),
+            patch("core.autopilot.cv2.waitKey"),
+            patch("core.autopilot.logger") as logger,
+            patch("core.autopilot.sleep", side_effect=stop_loop),
+        ):
+            autopilot.engine_loop()
+
+        logger.exception.assert_called_once_with("Unexpected error in Discovery Scanner Assist")
+        autopilot.notify_user.assert_called_once_with("Discovery Scanner Assist stopped: scan failed", speak=True)
+        self.assertFalse(autopilot.discovery_scan_assist_enabled)
+        self.assertEqual(autopilot.ap_ckb.call_args, call("discovery_scan_stop"))
+        autopilot.set_ap_status.assert_called_once_with("Idle")
 
     def _route_info_autopilot(self, location, address, travel=True):
         autopilot = EDAutopilot.__new__(EDAutopilot)
@@ -1151,7 +1188,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.travel_assist_enabled = False
         autopilot.waypoint_assist_enabled = False
         autopilot.afk_combat_assist_enabled = False
-        autopilot.dss_assist_enabled = False
+        autopilot.discovery_scan_assist_enabled = False
         autopilot.ap_state = "Idle"
         autopilot.jn = SimpleNamespace(ship_state=lambda: {"status": "Flying", "star_class": "G", "location": "Sol"})
         autopilot.nav_route = SimpleNamespace(
@@ -1201,7 +1238,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.travel_assist_enabled = False
         autopilot.waypoint_assist_enabled = False
         autopilot.afk_combat_assist_enabled = False
-        autopilot.dss_assist_enabled = False
+        autopilot.discovery_scan_assist_enabled = False
         autopilot.ap_state = "Idle"
         autopilot.jn = SimpleNamespace(ship_state=lambda: {"status": None, "star_class": None, "location": None})
         autopilot.overlay = Mock()
@@ -1236,7 +1273,7 @@ class EngineLoopInterruptTests(unittest.TestCase):
                 autopilot.travel_assist_enabled = False
                 autopilot.waypoint_assist_enabled = False
                 autopilot.afk_combat_assist_enabled = False
-                autopilot.dss_assist_enabled = False
+                autopilot.discovery_scan_assist_enabled = False
                 autopilot.single_waypoint_enabled = False
                 autopilot.update_overlay = Mock()
 

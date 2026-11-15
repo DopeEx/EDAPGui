@@ -33,6 +33,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Renamed DSS Assist to **Honk Assist** in the sidebar and Discovery Scanner Assist in status, settings and
+  documentation; existing fire-button settings are migrated automatically.
 - Commodity suggestions now open when the search field is clicked and narrow as you type.
 - The Sell / transfer commodity suggestions now include the clearly labelled carrier/construction **All cargo** action. Quantity selection also offers a direct switch back to numeric entry.
 - Waypoint routes now keep completion and remaining trade quantities separate from their definitions. Reset and route-level repetition restore the original quantities; the last selected route is remembered. The assist stops if progress cannot be saved.
@@ -52,6 +54,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Discovery Scanner Assist now waits for Analysis Mode, records only journal-confirmed scans as complete, and reports unexpected errors without terminating the autopilot engine.
 - Sidebar drag handling no longer logs callback errors when pointer movement arrives without an active drag.
 - Stopping an assist during engine polling no longer crashes the autopilot or prevents later stop requests.
 

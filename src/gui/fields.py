@@ -11,7 +11,7 @@ TAB_OVERLAY = "Overlay"
 TAB_DEBUG = "Debug"
 
 LOG_LEVELS = ("Debug", "Info", "Error")
-DSS_BUTTONS = ("Primary", "Secondary")
+DISCOVERY_SCAN_BUTTONS = ("Primary", "Secondary")
 OVERLAY_ANCHORS = ("Top left", "Top right", "Bottom left", "Bottom right")
 OVERLAY_POSITION_UNITS = ("Pixels", "Percent")
 OVERLAY_FONT_WEIGHTS = ("Light", "Regular", "Medium", "SemiBold", "Bold")
@@ -186,11 +186,11 @@ FIELDS = (
         tip="Level at which AP will terminate, \nbecause we are not scooping well.",
     ),
     Field(
-        "DSSButton",
+        "DiscoveryScanButton",
         TAB_SETTINGS,
         "choice",
-        "DSS Button",
-        tip="Fire button that is used for the detailed surface scan.",
+        "Discovery Scan Button",
+        tip="Fire button used by the Discovery Scanner (D-Scanner/Honk).",
     ),
     Field(
         "HotKey_StartTravel",
@@ -422,7 +422,7 @@ def parse(field, raw):
     if field.kind == "order":
         return normalize_overlay_line_order(raw)
     if field.kind == "choice":
-        choices = field.choices or (LOG_LEVELS if field.target == "log_level" else DSS_BUTTONS)
+        choices = field.choices or (LOG_LEVELS if field.target == "log_level" else DISCOVERY_SCAN_BUTTONS)
         if raw not in choices:
             raise ValueError(f"{field.label}: unknown choice {raw!r}")
         return raw

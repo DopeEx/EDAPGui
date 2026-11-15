@@ -8,7 +8,7 @@ from core.version import EDAP_VERSION
 from gui.cv_view import CV_VIEWS
 from gui.fields import (
     DEFAULT_OVERLAY_LINE_ORDER,
-    DSS_BUTTONS,
+    DISCOVERY_SCAN_BUTTONS,
     FIELDS_BY_KEY,
     LOG_LEVELS,
     OVERLAY_LINES,
@@ -147,7 +147,7 @@ def build_settings(app, page):
     for row, key in enumerate(("RefuelThreshold", "FuelScoopTimeOut", "FuelThreasholdAbortAP")):
         _field(app, fuel, key, row)
     buttons = _card(app, right, "Buttons")
-    row = _choice(app, buttons, "DSSButton", "DSS Button", DSS_BUTTONS, 0)
+    row = _choice(app, buttons, "DiscoveryScanButton", "Discovery Scan Button", DISCOVERY_SCAN_BUTTONS, 0)
     _field(app, buttons, "HotKey_StartTravel", row)
     _field(app, buttons, "HotKey_StopAllAssists", row + 1)
     voice = _card(app, right, "Voice")

@@ -1,9 +1,9 @@
-"""The assist routines: FSD, SC, waypoint, AFK combat, DSS."""
+"""The assist routines: FSD, SC, waypoint, AFK combat, discovery scanner."""
 
 import threading
 from time import monotonic, sleep
 
-from core.constants import Flags2GlideMode, FlagsDocked, FlagsLanded, FlagsSupercruise
+from core.constants import Flags2GlideMode, FlagsAnalysisMode, FlagsDocked, FlagsLanded, FlagsSupercruise
 from core.logger import logger
 from core.types import FsdAssistResult, ScTargetAlignReturn
 from vision.disengage import DisengageWorker
@@ -265,8 +265,8 @@ class AssistsMixin:
                 self.update_overlay()
 
                 # Do the Discovery Scan (Honk)
-                self.honk_thread = threading.Thread(target=self.honk, daemon=True)
-                self.honk_thread.start()
+                self.discovery_scan_thread = threading.Thread(target=self.discovery_scan, daemon=True)
+                self.discovery_scan_thread.start()
 
                 # Refuel
                 refueled = self.refuel(scr_reg)
@@ -535,18 +535,30 @@ class AssistsMixin:
 
         logger.debug("AFK combat: finished after evasion and fighter deployment sequence")
 
-    def dss_assist(self):
+    def discovery_scan_assist(self):
         while True:
             sleep(0.5)
-            if self.jn.ship_state()["status"] == "in_supercruise":
-                cur_star_system = self.jn.ship_state()["cur_star_system"]
-                if cur_star_system != self._prev_star_system:
-                    self.set_ap_status("DSS Scan")
-                    self.ap_ckb("log", "DSS Scan: " + cur_star_system)
-                    set_focus_elite_window()
-                    self.honk()
-                    self._prev_star_system = cur_star_system
-                    self.set_ap_status("Idle")
+            ship = self.jn.ship_state()
+            if ship["status"] != "in_supercruise":
+                self._discovery_scan_attempt_system = None
+                continue
+
+            cur_star_system = ship["cur_star_system"]
+            if not cur_star_system or cur_star_system in (
+                self._prev_discovery_scan_system,
+                self._discovery_scan_attempt_system,
+            ):
+                continue
+            if not self.status.get_flag(FlagsAnalysisMode):
+                continue
+
+            self._discovery_scan_attempt_system = cur_star_system
+            self.set_ap_status("Discovery Scan")
+            logger.debug("Discovery Scanner Assist: scanning system %s", cur_star_system)
+            set_focus_elite_window()
+            if self.discovery_scan():
+                self._prev_discovery_scan_system = cur_star_system
+            self.set_ap_status("Idle")
 
     def single_waypoint_assist(self):
         """Travel to a system or station or both."""

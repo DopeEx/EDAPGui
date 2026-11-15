@@ -7,6 +7,13 @@ from core.constants import ship_rpy_sc_50, ship_size_map
 from core.logger import logger
 
 
+def migrate_discovery_scan_config(config):
+    """Keep the former DSS button setting while moving it to the Discovery Scanner name."""
+    if "DiscoveryScanButton" not in config:
+        config["DiscoveryScanButton"] = config.get("DSSButton", "Primary")
+    config.pop("DSSButton", None)
+
+
 class ConfigMixin:
     # Loads the configuration file
     #
