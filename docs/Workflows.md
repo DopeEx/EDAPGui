@@ -145,8 +145,11 @@ to include rings near the previous upper boundary.
 Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers
 are checked separately so a behind marker is not mistaken for an ahead dot. A rejected filled-template match
-cannot validate a weak behind-template match. Unknown markers still stop compass alignment rather than providing
-a guessed direction. This is one shared recognition path for SDR/HDR and both HUD color schemes, not a
+cannot validate a weak behind-template match. A filled-blob fallback that disagrees with the template direction
+is treated as unknown, so alignment retries rather than steering from a guess. A morphologically recognized hollow
+marker can override a weak filled-template vote, including when the marker is visible near the compass rim.
+Unknown markers still stop compass alignment rather than providing a guessed direction. This is one shared
+recognition path for SDR/HDR and both HUD color schemes, not a
 resolution-specific mode. Real monitor/HDR and HUD-brightness combinations still require in-game validation.
 If a dim hollow marker merges with the compass rim or charging glow, an additional fallback checks for one
 compact dark hole with a brighter surrounding ring. It requires contrast in at least seven of eight directions

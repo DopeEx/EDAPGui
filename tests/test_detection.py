@@ -373,6 +373,66 @@ class CompassTestCase(MatchingTestCase):
             self.assertIsNone(detector.get_nav_offset(regions))
         fallback.assert_called_once()
 
+    def test_conflicting_weak_template_and_white_blob_directions_are_rejected(self):
+        detector = Detector()
+        regions = self.regions("compass")
+        image = self.images["compass"]
+        regions.match_compass_multiscale = Mock(return_value=(image, (0, 0.9, (0, 0), (0, 0)), 1.0))
+        regions.match_template_in_image_x3 = Mock(
+            side_effect=[
+                (image, (0, 0.72, (0, 0), (30, 30)), None),
+                (image, (0, 0.78, (0, 0), (40, 40)), None),
+            ]
+        )
+        regions.compass_debug_context = None
+        with (
+            patch.object(detector, "find_white_navpoint", return_value=(60, 60, False)) as fallback,
+            patch.object(detector, "dump_compass_debug"),
+        ):
+            self.assertIsNone(detector.get_nav_offset(regions))
+        fallback.assert_called_once()
+
+    def test_type10_weak_compass_conflict_crop_is_rejected(self):
+        path = FIXTURES / "screenshots" / "2160p" / "168_crop_compass-weak-direction-conflict_type10.png"
+        if not path.exists():
+            self.skipTest("local Type-10 compass regression crop unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+        detector = Detector()
+        with patch.object(detector, "dump_compass_debug"):
+            self.assertIsNone(detector.get_nav_offset(regions))
+
+    def test_hollow_marker_overrides_conflicting_weak_filled_template(self):
+        detector = Detector()
+        regions = self.regions("compass")
+        image = np.full((150, 150, 3), (160, 160, 0), np.uint8)
+        regions.compass_debug_context = None
+        regions.match_compass_multiscale = Mock(return_value=(image, (0, 0.92, (0, 0), (5, 5)), 1.0))
+        regions.match_template_in_image_x3 = Mock(
+            side_effect=[
+                (image, (0, 0.72, (0, 0), (0, 28)), None),
+                (image, (0, 0.53, (0, 0), (110, 68)), None),
+            ]
+        )
+        with (
+            patch.object(detector, "find_white_navpoint", return_value=(115, 65, True)),
+            patch.object(detector, "dump_compass_debug"),
+        ):
+            offset = detector.get_nav_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], -1.0)
+        self.assertGreater(offset["x"], 0.5)
+
+    def test_type10_hollow_right_rim_marker_remains_usable(self):
+        path = FIXTURES / "screenshots" / "diagnostics" / "compass" / "type10-hollow-right-rim-context.png"
+        if not path.exists():
+            self.skipTest("local Type-10 hollow marker crop unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], -1.0)
+        self.assertGreater(offset["x"], 0.8)
+
     def test_missing_compass_measurements_are_debug_only(self):
         with self.assertNoLogs("ed_log", level="INFO"):
             self.assertFalse(self.detect("have_destination", "empty"))

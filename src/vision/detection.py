@@ -301,6 +301,7 @@ class DetectionMixin:
         behind_image, (_, behind_val, _, behind_loc), _ = scr_reg.match_template_in_image_x3(
             compass_image, "navpoint-behind", template_scale
         )
+        template_z_pct = 1.0 if n_maxVal > behind_val else -1.0
         ahead = n_maxVal >= scr_reg.navpoint_match_thresh or (
             n_maxVal >= scr_reg.navpoint_glare_thresh and n_maxVal > behind_val + 0.1
         )
@@ -328,8 +329,15 @@ class DetectionMixin:
                 compass_image, f"a{n_maxVal:.2f}-b{behind_val:.2f}", context=scr_reg.compass_debug_context
             )
             if white is not None:
+                fallback_z = -1.0 if white[2] else 1.0
+                if fallback_z != template_z_pct and not white[2]:
+                    logger.debug(
+                        "Ignoring weak nav point fallback at %s: its direction conflicts with the templates",
+                        (round(white[0]), round(white[1])),
+                    )
+                    return None
                 n_pt = (round(white[0] - wid / 2), round(white[1] - hgt / 2))
-                final_z_pct = -1.0 if white[2] else 1.0
+                final_z_pct = fallback_z
                 logger.debug(f"Compass {'behind' if white[2] else 'ahead'} marker found without template at {n_pt}")
             else:
                 logger.debug("Compass nav point not found, template position is unreliable")
