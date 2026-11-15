@@ -33,8 +33,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Renamed DSS Assist to **Honk Assist** in the sidebar and Discovery Scanner Assist in status, settings and
-  documentation; existing fire-button settings are migrated automatically.
+- Renamed DSS Assist to **Honk Assist** and use **Discovery Scanner Assist** in status, settings and documentation; existing fire-button settings migrate automatically.
 - Commodity suggestions now open when the search field is clicked and narrow as you type.
 - The Sell / transfer commodity suggestions now include the clearly labelled carrier/construction **All cargo** action. Quantity selection also offers a direct switch back to numeric entry.
 - Waypoint routes now keep completion and remaining trade quantities separate from their definitions. Reset and route-level repetition restore the original quantities; the last selected route is remembered. The assist stops if progress cannot be saved.
