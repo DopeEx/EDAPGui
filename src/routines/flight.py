@@ -5,6 +5,8 @@ import threading
 import time
 from time import sleep
 
+import cv2
+
 from controls.directinput import SCANCODE
 from core.constants import (
     SCOOPABLE_STAR_CLASSES,
@@ -612,7 +614,32 @@ class FlightMixin:
 
     def try_sc_disengage(self, scr_reg) -> bool:
         """Check the disengage prompt and request the supercruise exit when it is active."""
-        if not self.sc_disengage_label_up(scr_reg) or not self.sc_disengage_active(scr_reg):
+        if getattr(self, "_disengage_session", False):
+            worker = self._disengage_worker
+            status = self.status.get_cleaned_data()
+            target = tuple(status[key] for key in ("Destination_System", "Destination_Body", "Destination_Name"))
+            if self.jn.ship_state()["status"] != "in_supercruise":
+                worker.invalidate()
+                return False
+            reading = worker.poll(target)
+            present = self.sc_disengage_label_up(scr_reg)
+            if reading is not None and not reading.matched:
+                self.report_disengage_reading(scr_reg, reading)
+            if not present:
+                worker.invalidate()
+                return False
+            if reading is not None and reading.matched and self.report_disengage_reading(scr_reg, reading):
+                worker.invalidate()
+            else:
+                if not worker.busy:
+                    raw = scr_reg.message_image("disengage", raw=True).copy()
+                    mask = scr_reg.filter_by_color(raw, scr_reg.blue_sco_color_range)
+                    masked = cv2.bitwise_and(raw, raw, mask=mask)
+                    worker.submit(
+                        target, self.ocr, tuple(self.locale.all_values("PRESS_TO_DISENGAGE_MSG")), masked, raw
+                    )
+                return False
+        elif not self.sc_disengage_label_up(scr_reg) or not self.sc_disengage_active(scr_reg):
             return False
 
         self.ap_ckb("log+vce", "Disengage Supercruise")

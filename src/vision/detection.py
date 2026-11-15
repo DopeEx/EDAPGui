@@ -20,6 +20,7 @@ from core.constants import (
 from core.logger import logger
 from i18n.localization import normalize_text
 from vision.diagnostics import save_case
+from vision.disengage import DISENGAGE_SIMILARITY, read_disengage_prompt
 
 INTERDICTION_SC_TIMEOUT = 60.0
 
@@ -710,6 +711,7 @@ class DetectionMixin:
         # Log only when a message appears, so the log shows whether the detection saw it
         if text_present != getattr(self, "_message_was_present", False):
             self._message_was_present = text_present
+            self._disengage_mismatch_saved = False
             if text_present:
                 logger.debug("HUD message text detected in the disengage region, reading it with OCR.")
         if self.cv_frames.is_open("hud"):
@@ -731,29 +733,14 @@ class DetectionMixin:
 
     def sc_disengage_active(self, scr_reg) -> bool:
         """look for the "PRESS [Y] TO DISENGAGE" text using OCR, if in this region then return true."""
-        # OCR the selected item. The raw images are a fallback for messages partly covered by the cockpit frame,
-        # the plain raw image is tried before the slower enlarged one.
-        sim_match = 0.35  # Similarity match 0.0 - 1.0 for 0% - 100%)
-        sim = 0.0
-        ocr_textlist = None
-        debug_images = {}
-        readable = False
-        for variant in ({}, {"raw": True}, {"raw": True, "upscale": 2}):
-            image = scr_reg.message_image("disengage", **variant)
-            textlist = self.ocr.image_simple_ocr(image)
-            if logger.isEnabledFor(logging.DEBUG):
-                name = "masked" if not variant else ("raw-upscaled" if variant.get("upscale") else "raw")
-                debug_images[name] = image.copy()
-                readable = readable or any(text.strip() for text in (textlist or []))
-            if textlist is None:
-                logger.debug(f"Disengage OCR returned no text ({variant or 'masked'}).")
-                continue
-            variant_sim = self.message_similarity("PRESS_TO_DISENGAGE_MSG", textlist)
-            logger.debug(f"Disengage similarity with {str(textlist)} is {variant_sim} ({variant or 'masked'})")
-            if variant_sim > sim or ocr_textlist is None:
-                sim, ocr_textlist = variant_sim, textlist
-            if sim > sim_match:
-                break
+        reading = read_disengage_prompt(
+            self.ocr, self.locale.all_values("PRESS_TO_DISENGAGE_MSG"), scr_reg.message_image
+        )
+        return self.report_disengage_reading(scr_reg, reading)
+
+    def report_disengage_reading(self, scr_reg, reading) -> bool:
+        sim, ocr_textlist, image = reading.similarity, reading.text, reading.image
+        sim_match = DISENGAGE_SIMILARITY
         # Draw box around region
         if self.debug_overlay:
             abs_rect = scr_reg.reg["disengage"]["rect"]
@@ -793,8 +780,9 @@ class DetectionMixin:
             # cv2.imwrite(paths.debug_path('disengage.png'), image)
             return True
 
-        if debug_images and not readable:
-            save_case("hud-disengage", "unreadable", debug_images)
+        if reading.debug_images and not getattr(self, "_disengage_mismatch_saved", False):
+            save_case("hud-disengage", "unmatched" if reading.readable else "unreadable", reading.debug_images)
+            self._disengage_mismatch_saved = True
         return False
 
     def is_sun_dead_ahead(self, scr_reg):

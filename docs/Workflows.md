@@ -164,6 +164,15 @@ Short user-facing events, such as sending the supercruise exit, remain at Info l
 The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
 the same horizontal scanline, in addition to the color-area and line checks. This rejects sparse cockpit decorations,
 scattered HUD readouts and dense cyan noise without increasing the total glyph-count requirement.
+
+During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
+target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.
+A recognized prompt must still have an active message pre-check and a supercruise journal state when consumed;
+matches more than five seconds old are discarded. Stop requests, target changes, approach completion and a new
+approach invalidate earlier jobs. An already-running inference cannot be interrupted, but its result is discarded
+and no second job starts until it finishes. Calls using the same OCR engine are serialized, including lazy result
+iteration. This avoids concurrent engine access but does not reduce OCR CPU cost; responsiveness under game load
+still requires in-game validation. Negative results remain available for Debug diagnostics even after five seconds.
 The optional CV view draws match boxes on display copies; it does not alter the recognition images or saved context.
 Raw BGRA-backed OCR crops are copied into writable display images before annotations are drawn.
 Its windows are managed by the main GUI thread and open within the work area of the monitor containing the main window.
@@ -209,7 +218,9 @@ and is excluded from Git along with the rest of `user_data/`.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
 - An unconfirmed trade dialog saves its separately captured title and commodity regions and a later dialog context.
-  OCR wait timeouts, unreadable disengage messages and ambiguous alignment or line-of-sight text can also save cases.
+  OCR wait timeouts, unreadable or unmatched disengage OCR results, and ambiguous alignment or line-of-sight text
+  can also save cases. Disengage mismatches save one case per continuous message-gate event, including when OCR
+  returns readable but unrelated text. Canceled or superseded jobs are not reported as completed OCR failures.
 
 The program cannot automatically detect every wrong recognition: an apparently successful match can still be wrong.
 Not every absence of HUD text is an error. Images and logs can contain player information; review and remove sensitive

@@ -4,7 +4,9 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -30,6 +32,49 @@ if OCR is None:
         sys.modules.pop("vision.ocr", None)
 else:
     HIGHLIGHT_OCR = OCR
+
+
+class OcrConcurrencyTestCase(unittest.TestCase):
+    def test_shared_engine_serializes_prediction_and_lazy_result_iteration(self):
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        ocr._predict_lock = threading.Lock()
+        iterating = threading.Event()
+        release = threading.Event()
+        second_started = threading.Event()
+        second_prediction = threading.Event()
+        predictions = []
+
+        def predict(input):
+            predictions.append(input)
+            if len(predictions) > 1:
+                second_prediction.set()
+
+            def results():
+                iterating.set()
+                if not release.wait(5):
+                    raise TimeoutError("Test did not release lazy OCR result")
+                yield SimpleNamespace(json={"res": {"rec_texts": ["prompt"]}})
+
+            return results()
+
+        ocr.paddleocr = SimpleNamespace(predict=predict)
+
+        def second_call():
+            second_started.set()
+            return ocr.image_simple_ocr("second")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(ocr.image_simple_ocr, "first")
+            try:
+                self.assertTrue(iterating.wait(5))
+                second = executor.submit(second_call)
+                self.assertTrue(second_started.wait(5))
+                self.assertFalse(second_prediction.wait(0.1))
+            finally:
+                release.set()
+            self.assertEqual(first.result(timeout=5), ["prompt"])
+            self.assertEqual(second.result(timeout=5), ["prompt"])
+        self.assertEqual(predictions, ["first", "second"])
 
 
 class HighlightTestCase(unittest.TestCase):
@@ -172,6 +217,19 @@ class HighlightTestCase(unittest.TestCase):
 
 @unittest.skipIf(OCR is None, "PaddleOCR is not installed")
 class OCRTestCase(unittest.TestCase):
+    def test_disengage_engine_can_be_reused_on_background_threads(self):
+        from vision.disengage import DisengageWorker
+
+        ocr = OCR(screen=None)
+        path = paths.ROOT / "tests" / "fixtures" / "disengage" / "disengage-msg_en_2160p.png"
+        image = cv2.imread(str(path))
+        self.assertIsNotNone(ocr.image_simple_ocr(image))
+        for _ in range(2):
+            worker = DisengageWorker()
+            worker.submit(("station",), ocr, ("PRESS TO DISENGAGE",), image, image)
+            reading = worker._future.result(timeout=60)
+            self.assertTrue(reading.matched, reading.text)
+
     def test_local_default_orange_tab_is_confirmed_with_real_ocr(self):
         path = (
             paths.ROOT
@@ -279,6 +337,7 @@ class PaddleOCRV3TestCase(unittest.TestCase):
 
     def make_ocr(self, results):
         ocr = OCR.__new__(OCR)
+        ocr._predict_lock = threading.Lock()
         ocr.paddleocr = Mock()
         ocr.paddleocr.predict.return_value = results
         return ocr

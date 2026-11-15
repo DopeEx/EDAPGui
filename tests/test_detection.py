@@ -819,6 +819,34 @@ class DisengageTestCase(MatchingTestCase):
                     self.assertTrue(any("OCR returned no text" in message for message in debug))
                     self.assertTrue(any("Disengage similarity" in message for message in debug))
 
+    def test_readable_but_unmatched_ocr_is_saved_once_per_message_gate_event(self):
+        detector = Detector()
+        detector.debug_overlay = False
+        detector.ocr = Mock()
+        detector.ocr.image_simple_ocr.return_value = ["1659"]
+        detector.ocr.string_similarity.return_value = 0.0
+        detector.locale = Mock()
+        detector.locale.all_values.return_value = ["PRESS TO DISENGAGE"]
+        regions = Mock()
+        regions.message_text_present.side_effect = [True, False, True]
+        regions.last_message_fraction = 0.02
+        regions.last_message_line = 0.3
+        regions.message_image.return_value = np.zeros((40, 120, 3), np.uint8)
+
+        with patch("vision.detection.save_case") as save_case, self.assertLogs("ed_log", level="DEBUG"):
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_active(regions))
+
+        self.assertEqual(save_case.call_count, 2)
+        self.assertEqual(
+            [call.args[:2] for call in save_case.call_args_list],
+            [("hud-disengage", "unmatched"), ("hud-disengage", "unmatched")],
+        )
+
     def test_disengage_message_is_recognised(self):
         self.assertTrue(Detector().sc_disengage_label_up(self.regions("message")))
 

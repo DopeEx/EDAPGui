@@ -61,7 +61,8 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
   Visible target rings tolerate small size variations without lowering the detection threshold, and the search reaches
   higher to keep rings crossing the previous upper boundary in view.
   Supercruise message detection requires a text-like cyan glyph arrangement, reducing OCR on cockpit decorations
-  and scattered HUD readouts.
+  and scattered HUD readouts. During supercruise approaches, message OCR runs in the background so target alignment
+  can continue; obsolete results cannot request a dropout.
 
 See the [waypoint guide](docs/Waypoint.md) for waypoint files and trade actions, and the
 [ship tuning guide](docs/RollPitchYaw.md) for roll, pitch, and yaw rates.
@@ -98,9 +99,9 @@ Ship, Overlay, Settings, and Debug tabs are saved automatically; the lower right
 are saved. The window position, collapsed state, and pin are remembered in `user_data/configs/gui.json`.
 
 The program stores its settings, ship profiles, waypoint files, route progress, statistics, logs, and debug output in `user_data/`.
-Recognition measurements and OCR details are logged only at Debug level. In Debug log mode, recognition problems can
-save local diagnostic images, including same-frame compass and target context, alongside a separate detailed log; see the
-[assist troubleshooting guide](docs/Workflows.md#vision-diagnostics).
+Recognition measurements and OCR details are logged only at Debug level. In Debug mode, recognition problems can
+save local diagnostic images, including same-frame compass and target context and disengage OCR attempts that return
+unrelated text; see the [assist troubleshooting guide](docs/Workflows.md#vision-diagnostics).
 Four buttons on the Debug tab open individual CV views with dark title bars; X closes each window.
 Their images scale proportionally when the windows are resized.
 Debug Overlay can be toggled

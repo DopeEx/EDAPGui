@@ -6,6 +6,7 @@ from time import monotonic, sleep
 from core.constants import Flags2GlideMode, FlagsDocked, FlagsLanded, FlagsSupercruise
 from core.logger import logger
 from core.types import FsdAssistResult, ScTargetAlignReturn
+from vision.disengage import DisengageWorker
 from vision.screen import set_focus_elite_window
 
 IN_SYSTEM_TARGET_TIMEOUT = 5.0
@@ -350,6 +351,20 @@ class AssistsMixin:
     # Supercruise Assist loop to travel to target in system and perform autodock
     #
     def sc_assist(self, scr_reg):
+        worker = getattr(self, "_disengage_worker", None)
+        if worker is None:
+            worker = self._disengage_worker = DisengageWorker()
+        worker.invalidate()
+        self._message_was_present = False
+        self._disengage_mismatch_saved = False
+        self._disengage_session = True
+        try:
+            return self._sc_assist(scr_reg)
+        finally:
+            self._disengage_session = False
+            worker.invalidate()
+
+    def _sc_assist(self, scr_reg):
         if not self.has_in_system_target(self.status.get_cleaned_data()):
             logger.debug("SC Assist skipped because Status.json has no in-system destination.")
             self.ap_ckb("log", "No local target found. Select a target and try again.")
