@@ -34,30 +34,6 @@ class CargoParser:
         # Read json file data
         self.current_data = self.get_cargo_data()
 
-        # self.watch_thread = threading.Thread(target=self._watch_file_thread, daemon=True)
-        # self.watch_thread.start()
-        # self.status_queue = queue.Queue()
-
-    # def _watch_file_thread(self):
-    #     backoff = 1
-    #     while True:
-    #         try:
-    #             self._watch_file()
-    #         except Exception as e:
-    #             logger.debug('An error occurred when reading status file')
-    #             sleep(backoff)
-    #             logger.debug('Attempting to restart status file reader after failure')
-    #             backoff *= 2
-    #
-    # def _watch_file(self):
-    #     """Detects changes in the Status.json file."""
-    #     while True:
-    #         status = self.get_cleaned_data()
-    #         if status != self.current_data:
-    #             self.status_queue.put(status)
-    #             self.current_data = status
-    #         sleep(1)
-
     def get_file_modified_time(self) -> float:
         return os.path.getmtime(self.file_path)
 
@@ -69,7 +45,6 @@ class CargoParser:
         """
         # Check if file changed
         if not force and self.get_file_modified_time() == self.last_mod_time:
-            # logger.debug(f'Cargo.json mod timestamp {self.last_mod_time} unchanged.')
             return self.current_data
 
         # Read file
@@ -90,8 +65,6 @@ class CargoParser:
         # Store data
         self.current_data = data
         self.last_mod_time = modified
-        # logger.debug(f'Cargo.json mod timestamp {self.last_mod_time} updated.')
-        # print(json.dumps(data, indent=4))
         return data
 
     @staticmethod
@@ -125,11 +98,9 @@ class CargoParser:
         """
         for good in self.current_data["Inventory"]:
             if good["Name"].upper() == item_name.upper():
-                # print(json.dumps(good, indent=4))
                 return good
             if "Name_Localised" in good:
                 if good["Name_Localised"].upper() == item_name.upper():
-                    # print(json.dumps(good, indent=4))
                     return good
         return None
 

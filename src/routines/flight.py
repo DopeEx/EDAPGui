@@ -181,8 +181,6 @@ class FlightMixin:
                 sleep(1.5)
                 if self.jn.ship_state()["status"] == "dockinggranted":
                     granted = True
-                    # Go back to navigation tab
-                    # self.request_docking_cleanup()
                     break
                 if self.jn.ship_state()["status"] == "dockingdenied":
                     pass
@@ -565,8 +563,6 @@ class FlightMixin:
             self.ap_ckb("log", "Target not found, terminating SC Assist")
             return ScTargetAlignReturn.Lost
 
-        # logger.debug("sc_target_align x: "+str(off['x'])+" y:"+str(off['y']))
-
         while (abs(off["x"]) > close) or (abs(off["y"]) > close):
             if abs(off["x"]) > 25:
                 hold_yaw = 0.2
@@ -577,8 +573,6 @@ class FlightMixin:
                 hold_pitch = 0.15
             else:
                 hold_pitch = 0.075
-
-            # logger.debug("  sc_target_align x: "+str(off['x'])+" y:"+str(off['y']))
 
             if off["x"] > close:
                 self.keys.send("YawRightButton", hold=hold_yaw)
@@ -611,11 +605,8 @@ class FlightMixin:
                 self.ap_ckb("log", "Target lost, attempting re-alignment.")
                 return ScTargetAlignReturn.Lost
 
-        # TODO - find a better way to clear these
         if self.debug_overlay:
             sleep(2)
-            # self.overlay.overlay_remove_rect('sc_disengage_label_up')
-            # self.overlay.overlay_remove_floating_text('sc_disengage_label_up')
             self.overlay.overlay_remove_rect("sc_disengage_active")
             self.overlay.overlay_remove_floating_text("sc_disengage_active")
             self.overlay.overlay_paint()
@@ -873,8 +864,6 @@ class FlightMixin:
             sleep(0.1)
 
     # jump() happens after we are aligned to Target
-    # TODO: nees to check for Thargoid interdiction and their wave that would shut us down,
-    #       if thargoid, then we wait until reboot and continue on.. go back into FSD and align
     def jump(self, scr_reg):
         logger.debug("jump")
 
@@ -1173,7 +1162,6 @@ class FlightMixin:
 
             # Wait until out of orbit.
             self.status.wait_for_flag_off(FlagsHasLatLong, timeout=60)
-            # TODO - do we need to check if we never leave orbit?
 
             # Disable SCO. If SCO not fitted, this will do nothing.
             self.keys.send("UseBoostJuice")
@@ -1186,7 +1174,6 @@ class FlightMixin:
         self.keys.send("Supercruise", hold=0.001)
         # Start SCO monitoring
         self.start_sco_monitoring()
-        # TODO - check if we actually go into supercruise
         sleep(12)
 
         self.keys.send("SetSpeed50")

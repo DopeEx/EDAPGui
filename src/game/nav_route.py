@@ -31,30 +31,6 @@ class NavRouteParser:
         self.current_data = {"event": "NavRouteClear", "Route": []}
         self.get_nav_route_data()
 
-        # self.watch_thread = threading.Thread(target=self._watch_file_thread, daemon=True)
-        # self.watch_thread.start()
-        # self.status_queue = queue.Queue()
-
-    # def _watch_file_thread(self):
-    #     backoff = 1
-    #     while True:
-    #         try:
-    #             self._watch_file()
-    #         except Exception as e:
-    #             logger.debug('An error occurred when reading status file')
-    #             sleep(backoff)
-    #             logger.debug('Attempting to restart status file reader after failure')
-    #             backoff *= 2
-    #
-    # def _watch_file(self):
-    #     """Detects changes in the Status.json file."""
-    #     while True:
-    #         status = self.get_cleaned_data()
-    #         if status != self.current_data:
-    #             self.status_queue.put(status)
-    #             self.current_data = status
-    #         sleep(1)
-
     def get_file_modified_time(self) -> float:
         return os.path.getmtime(self.file_path)
 
@@ -129,7 +105,6 @@ class NavRouteParser:
 
         # Find last system in route
         last_system = route[-1]
-        # print(json.dumps(last_system, indent=4))
         return last_system.get("StarSystem", "") if isinstance(last_system, dict) else ""
 
     def get_next_system(self, current_system: str, current_address: int | None = None) -> tuple[str, int] | None:

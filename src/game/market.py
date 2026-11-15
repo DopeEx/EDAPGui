@@ -35,30 +35,6 @@ class MarketParser:
         # Read json file data
         self.current_data = self.get_market_data()
 
-        # self.watch_thread = threading.Thread(target=self._watch_file_thread, daemon=True)
-        # self.watch_thread.start()
-        # self.status_queue = queue.Queue()
-
-    # def _watch_file_thread(self):
-    #     backoff = 1
-    #     while True:
-    #         try:
-    #             self._watch_file()
-    #         except Exception as e:
-    #             logger.debug('An error occurred when reading status file')
-    #             sleep(backoff)
-    #             logger.debug('Attempting to restart status file reader after failure')
-    #             backoff *= 2
-    #
-    # def _watch_file(self):
-    #     """Detects changes in the Status.json file."""
-    #     while True:
-    #         status = self.get_cleaned_data()
-    #         if status != self.current_data:
-    #             self.status_queue.put(status)
-    #             self.current_data = status
-    #         sleep(1)
-
     def get_file_modified_time(self) -> float:
         return os.path.getmtime(self.file_path)
 
@@ -96,7 +72,6 @@ class MarketParser:
 
         # Check if file changed
         if self.get_file_modified_time() == self.last_mod_time:
-            # logger.debug(f'Market.json mod timestamp {self.last_mod_time} unchanged.')
             return self.current_data
 
         # Read file
@@ -115,8 +90,6 @@ class MarketParser:
         # Store data
         self.current_data = data
         self.last_mod_time = self.get_file_modified_time()
-        # logger.debug(f'Market.json mod timestamp {self.last_mod_time} updated.')
-        # print(json.dumps(data, indent=4))
         return data
 
     def get_sellable_items(self, cargo_parser) -> list | None:
@@ -159,9 +132,6 @@ class MarketParser:
             )
         ]
         # DemandBracket: 0=Not listed, 1=Low Demand, 2=Medium Demand, 3=High Demand
-        # sellable_items = [x for x in data['Items'] if x['DemandBracket'] > 0]
-        # sellable_items = [x for x in data['Items'] if self.can_sell_item(x['Name_Localised'])]
-        # print(json.dumps(newlist, indent=4))
 
         # Sort by name, then category
         sorted_list1 = sorted(sellable_items, key=lambda x: x["Name_Localised"].lower())
@@ -199,11 +169,8 @@ class MarketParser:
         if data is None:
             return None
 
-        # buyable_items = [x for x in data['Items'] if x['Producer'] and x['Stock'] > 0]
         # StockBracket: 0=Not listed, 1=Low Stock, 2=Medium Stock, 3=High Stock
-        # buyable_items = [x for x in data['Items'] if x['StockBracket'] > 0]
         buyable_items = [x for x in data["Items"] if self.can_buy_item(str(x.get("id", "")))]
-        # print(json.dumps(newlist, indent=4))
 
         # Sort by name, then category
         sorted_list1 = sorted(buyable_items, key=lambda x: x["Name_Localised"].lower())
@@ -286,22 +253,13 @@ if __name__ == "__main__":
     while True:
         cleaned_data = parser.get_market_data()
 
-        # item = parser.get_item('water')
-        # sell = parser.can_sell_item('water')
-        # buy = parser.can_buy_item('water')
-
         items = parser.get_buyable_items()
-        # items = parser.get_sellable_items()
         sorted_list = sorted(items, key=itemgetter("Name_Localised"))
         sorted_list = sorted(sorted_list, key=itemgetter("Category_Localised"))
         for item in sorted_list:
             print(
                 f"Item: {item['Name_Localised']} ({item['Category_Localised']}) DemandBracket:{item['DemandBracket']} StockBracket:{item['StockBracket']}"
             )
-
-        # print(f"Curr Time: {time.time()}")
-        # print(f"Sell water: {sell}")
-        # print(json.dumps(cleaned_data, indent=4))
 
         time.sleep(1)
         break

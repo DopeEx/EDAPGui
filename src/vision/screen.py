@@ -37,13 +37,6 @@ def dpi_aware():
             user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(previous))
 
 
-# size() return (ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
-# TODO: consider update to handle ED running in a window
-#   find the ED Window
-#   win32gui.SetForegroundWindow(hwnd)
-#    bbox = win32gui.GetWindowRect(hwnd)     will also then give me the resolution of the image
-#     img = ImageGrab.grab(bbox)
-
 elite_dangerous_window = "Elite - Dangerous (CLIENT)"
 
 
@@ -52,7 +45,6 @@ def set_focus_elite_window():
     that does have focus."""
     ed_title = "Elite - Dangerous (CLIENT)"
 
-    # TODO - determine if GetWindowText is faster than FindWindow if ED is in foreground
     if win32gui.GetWindowText(win32gui.GetForegroundWindow()) == ed_title:
         return
 
@@ -120,11 +112,7 @@ class Screen:
             "2560x1080": [0.75, 0.75],  # tested
             "2560x1440": [1.0, 1.0],  # tested
             "3440x1440": [1.0, 1.0],  # tested
-            # 'Calibrated': [-1.0, -1.0]
         }
-
-        # used this to write the self.scales table to the json file
-        # self.write_config(self.scales)
 
         ss = self.read_config()
 
@@ -143,12 +131,6 @@ class Screen:
             # if we don't have a definition for the resolution then use calculation
             self.scaleX = self.screen_width / 3440.0
             self.scaleY = self.screen_height / 1440.0
-
-        # if the calibration scale values are not -1, then use those regardless of above
-        # if self.scales['Calibrated'][0] != -1.0:
-        #     self.scaleX = self.scales['Calibrated'][0]
-        # if self.scales['Calibrated'][1] != -1.0:
-        #     self.scaleY = self.scales['Calibrated'][1]
 
         logger.debug("screen size: " + str(self.screen_width) + " " + str(self.screen_height))
         logger.debug("Default scale X, Y: " + str(self.scaleX) + ", " + str(self.scaleY))
@@ -226,7 +208,6 @@ class Screen:
             "mon": self.monitor_number,
         }
         image = self.grab(monitor)
-        # TODO - mss.grab returns the image in BGR format, so no need to convert to RGB2BGR
         if rgb:
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         return image
@@ -239,7 +220,6 @@ class Screen:
         if self.using_screen:
             abs_rect = self.screen_rect_to_abs(rect)
             image = self.get_screen(abs_rect[0], abs_rect[1], abs_rect[2], abs_rect[3])
-            # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             return image
         else:
@@ -266,7 +246,6 @@ class Screen:
         """Grabs a full screenshot and returns the image."""
         if self.using_screen:
             image = self.get_screen(0, 0, self.screen_width, self.screen_height)
-            # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             return image
         else:

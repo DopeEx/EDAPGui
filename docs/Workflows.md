@@ -282,9 +282,20 @@ an exact name match and confirmation from game state.
 
 ## Follow-up items
 
+These are deferred improvements for future consideration.
+
 - Assess HUD distance OCR for feedback-controlled station approaches instead of timed forward flight. Deferred
   until its reliability across resolutions, HUD colors and languages has been evaluated; not used by current approaches.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
   Bookmarks remain an alternative when a destination cannot be read reliably.
 - Avoid changing hyperspace-interdiction recovery until there is a reliable way to validate it. Interdiction attempts
   are too unpredictable for routine testing: they may not occur for days, then happen several times within an hour.
+- Verify the screen-capture channel order and simplify the related color conversions only if vision regression tests
+  confirm the expected colors in both captured-screen and supplied-image modes.
+- Confirm supercruise entry in `sc_engage()` and handle failure to leave orbit after the bounded wait without
+  continuing with later flight inputs.
+- Assess explicit state confirmation for Orbital Construction Services instead of relying on a fixed menu-render delay.
+- Review waypoint arrival matching for Orbital Construction Sites; an older candidate name match was commented out, so confirm the intended journal name and current route behavior before adding support.
+- Assess handling of Thargoid shutdown during hyperspace only when its trigger and recovery can be validated safely.
+- Consider sharing Navigation-panel bookmark selection with the System Map path if it can be done without changing
+  the confirmed selection behavior.

@@ -124,6 +124,3 @@ def _install_exception_hooks() -> None:
 
 
 _install_exception_hooks()
-
-# logger.disabled = True
-# logger.disabled = False
