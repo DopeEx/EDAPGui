@@ -797,6 +797,7 @@ class DisengageTestCase(MatchingTestCase):
             self.assertTrue(Detector().sc_disengage_label_up(self.regions("message")))
         self.assertTrue(any("Disengage message check:" in record.getMessage() for record in logs.records))
         self.assertTrue(any("reading it with OCR" in record.getMessage() for record in logs.records))
+        self.assertTrue(any("text-like glyph components" in record.getMessage() for record in logs.records))
         self.assertTrue(all(record.levelno == logging.DEBUG for record in logs.records))
 
     def test_ocr_diagnostics_are_debug_only_and_exit_status_remains_info(self):
@@ -826,12 +827,88 @@ class DisengageTestCase(MatchingTestCase):
 
     def test_small_dropout_prompt_passes_the_message_gate(self):
         image = np.zeros((100, 100, 3), np.uint8)
-        prompt = np.uint8([[[90, 150, 255]]])
-        image[20:40, 20:50] = cv2.cvtColor(prompt, cv2.COLOR_HSV2BGR)[0, 0]
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        for index in range(20):
+            x = 5 + index * 4
+            cv2.rectangle(image, (x, 30), (x + 1, 40), color, -1)
         regions = ScreenRegions(FakeScreen(image), self.templates)
 
         self.assertTrue(regions.message_text_present())
-        self.assertGreaterEqual(regions.last_message_fraction, 0.03)
+        self.assertGreaterEqual(regions.last_message_glyph_components, regions.message_glyph_components_min)
+
+    def test_hud_readout_with_15_glyphs_does_not_trigger_disengage_ocr(self):
+        image = np.zeros((100, 100, 3), np.uint8)
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 20), (30, 20), color, 1)
+        for index in range(15):
+            x = 5 + index * 5
+            cv2.rectangle(image, (x, 35), (x + 1, 45), color, -1)
+        regions = ScreenRegions(FakeScreen(image), self.templates)
+        detector = Detector()
+        detector.debug_overlay = False
+        detector.ocr = Mock()
+        detector.ocr.image_simple_ocr.return_value = []
+        detector.ocr.string_similarity.return_value = 0.0
+        detector.locale = Mock()
+        detector.locale.all_values.return_value = ["PRESS TO DISENGAGE"]
+
+        self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+
+        self.assertGreaterEqual(regions.last_message_fraction, regions.message_text_fraction)
+        self.assertGreaterEqual(regions.last_message_line, regions.message_line_fraction)
+        self.assertEqual(regions.last_message_glyph_components, 15)
+        detector.ocr.image_simple_ocr.assert_not_called()
+
+    def test_cockpit_decor_crops_do_not_trigger_disengage_ocr(self):
+        crops = (
+            "171_crop_no-msg_type10-cockpit-decoration.png",
+            "172_crop_no-msg_type10-cockpit-decoration.png",
+        )
+        folder = FIXTURES / "screenshots" / "2160p"
+        available = [folder / name for name in crops if (folder / name).exists()]
+        if not available:
+            self.skipTest("local cockpit-decoration crops unavailable")
+
+        detector = Detector()
+        detector.ocr = Mock()
+        for path in available:
+            with self.subTest(screenshot=path.name):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+                self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+                detector.ocr.image_simple_ocr.assert_not_called()
+                self.assertFalse(
+                    regions.message_glyph_components_min
+                    <= regions.last_message_glyph_components
+                    <= regions.message_glyph_components_max
+                )
+
+    def test_scattered_glyphs_do_not_trigger_ocr_even_with_enough_total_components(self):
+        image = np.zeros((100, 100, 3), np.uint8)
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 10), (40, 10), color, 1)
+        for y in (25, 45, 65):
+            for x in range(5, 85, 10):
+                cv2.rectangle(image, (x, y), (x + 2, y + 5), color, -1)
+        regions = ScreenRegions(FakeScreen(image), self.templates)
+        detector = Detector()
+        detector.ocr = Mock()
+        self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+        self.assertEqual(regions.last_message_glyph_components, 24)
+        self.assertEqual(regions.last_message_row_glyphs, 8)
+        detector.ocr.image_simple_ocr.assert_not_called()
+
+    def test_type10_scattered_hud_crops_do_not_trigger_ocr(self):
+        folder = FIXTURES / "screenshots" / "diagnostics" / "hud-disengage"
+        available = sorted(folder.glob("type10-no-msg-*.png"))
+        if not available:
+            self.skipTest("local Type-10 HUD readout crops unavailable")
+        detector = Detector()
+        detector.ocr = Mock()
+        for path in available:
+            with self.subTest(screenshot=path.name):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+                self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
+                detector.ocr.image_simple_ocr.assert_not_called()
 
 
 class FsdAlignmentPromptTestCase(MatchingTestCase):

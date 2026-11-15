@@ -691,13 +691,20 @@ class DetectionMixin:
 
         # Heartbeat every 5 s, so the log shows that the check runs and how much message-colored area it sees
         now = time.monotonic()
-        if now - getattr(self, "_message_log_time", 0.0) >= 5.0:
+        if now - getattr(self, "_message_log_time", 0.0) >= 5.0 or text_present != getattr(
+            self, "_message_was_present", False
+        ):
             self._message_log_time = now
             fraction = getattr(scr_reg, "last_message_fraction", 0.0)
             line = getattr(scr_reg, "last_message_line", 0.0)
+            glyph_components = getattr(scr_reg, "last_message_glyph_components", 0)
             logger.debug(
                 f"Disengage message check: message-colored area {fraction:.3f} (needs {scr_reg.message_text_fraction}), "
-                f"longest line {line:.2f} (needs {scr_reg.message_line_fraction})"
+                f"longest line {line:.2f} (needs {scr_reg.message_line_fraction}), "
+                f"text-like glyph components {glyph_components} "
+                f"(needs {scr_reg.message_glyph_components_min}-{scr_reg.message_glyph_components_max}), "
+                f"aligned glyphs {getattr(scr_reg, 'last_message_row_glyphs', 0)} "
+                f"(needs {scr_reg.message_row_glyphs_min})"
             )
 
         # Log only when a message appears, so the log shows whether the detection saw it

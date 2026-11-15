@@ -161,6 +161,9 @@ Set **Debug > Log level > Debug** before reproducing a recognition problem. Norm
 program run; up to ten older files are kept for each. The GUI's log-file button opens `autopilot.log`.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
+The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
+the same horizontal scanline, in addition to the color-area and line checks. This rejects sparse cockpit decorations,
+scattered HUD readouts and dense cyan noise without increasing the total glyph-count requirement.
 The optional CV view draws match boxes on display copies; it does not alter the recognition images or saved context.
 Raw BGRA-backed OCR crops are copied into writable display images before annotations are drawn.
 Its windows are managed by the main GUI thread and open within the work area of the monitor containing the main window.

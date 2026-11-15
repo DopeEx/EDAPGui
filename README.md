@@ -60,6 +60,8 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
   even when a weak filled-marker template disagrees, with size checks scaled to the compass sphere.
   Visible target rings tolerate small size variations without lowering the detection threshold, and the search reaches
   higher to keep rings crossing the previous upper boundary in view.
+  Supercruise message detection requires a text-like cyan glyph arrangement, reducing OCR on cockpit decorations
+  and scattered HUD readouts.
 
 See the [waypoint guide](docs/Waypoint.md) for waypoint files and trade actions, and the
 [ship tuning guide](docs/RollPitchYaw.md) for roll, pitch, and yaw rates.
