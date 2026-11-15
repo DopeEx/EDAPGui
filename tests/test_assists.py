@@ -345,8 +345,8 @@ class AfkCombatPowerTestCase(unittest.TestCase):
                     {"pips": target},
                 ]
                 with (
-                    patch("routines.afk_combat.monotonic", side_effect=lambda: self.now),
-                    patch("routines.afk_combat.sleep", side_effect=self.advance),
+                    patch("controls.power.monotonic", side_effect=lambda: self.now),
+                    patch("controls.power.sleep", side_effect=self.advance),
                 ):
                     self.assertTrue(self.combat._set_power(priority))
                 self.assertEqual(self.keys.send.call_args_list[0], call("ResetPowerDistribution"))
@@ -361,8 +361,8 @@ class AfkCombatPowerTestCase(unittest.TestCase):
                 states = [{"pips": {"system": 2.0, "engine": 2.0, "weapons": 2.0}}] if failure == "final" else []
                 self.status.get_cleaned_data.side_effect = states + [mismatch] * 10
                 with (
-                    patch("routines.afk_combat.monotonic", side_effect=lambda: self.now),
-                    patch("routines.afk_combat.sleep", side_effect=self.advance),
+                    patch("controls.power.monotonic", side_effect=lambda: self.now),
+                    patch("controls.power.sleep", side_effect=self.advance),
                 ):
                     self.assertFalse(self.combat._set_power("engine"))
                 self.assertIn("Power distribution", self.combat.failure_reason)
@@ -546,6 +546,58 @@ class TravelAssistTestCase(unittest.TestCase):
         self.assists.set_ap_status = Mock()
         self.assists.status = Mock()
         self.assists.ap_ckb = Mock()
+        self.assists.keys = Mock()
+        self.assists.ship_control = Mock()
+        self.assists.notify_user = Mock()
+        power_patch = patch("routines.assists.set_power_distribution", return_value=True)
+        self.power = power_patch.start()
+        self.addCleanup(power_patch.stop)
+
+    def test_power_is_confirmed_before_flight(self):
+        self.assists.jn.ship_state.return_value = {"target": "Sol"}
+        self.assists.fsd_assist.return_value = FsdAssistResult.RouteComplete
+        self.assists.fsd_assist.side_effect = lambda _: self.power.assert_called_once_with(
+            self.assists.keys, self.assists.status, "engine", skip_if_set=True
+        )
+
+        self.assists.travel_assist(None)
+
+        self.assists.ship_control.goto_cockpit_view.assert_called_once_with(timeout=5.0)
+        self.assists.fsd_assist.assert_called_once_with(None)
+
+    def test_unconfirmed_power_notifies_and_continues_system_or_local_flight(self):
+        for system_target in ("Sol", None):
+            with self.subTest(system_target=system_target):
+                self.assists.jn.ship_state.return_value = {"target": system_target}
+                self.assists.status.get_cleaned_data.return_value = status("Some Station", 20)
+                self.assists.fsd_assist.return_value = FsdAssistResult.RouteComplete
+                self.power.return_value = False
+                self.assists.notify_user.reset_mock()
+                self.assists.fsd_assist.reset_mock()
+                self.assists.sc_assist.reset_mock()
+
+                self.assists.travel_assist(None)
+
+                self.assists.keys.send.assert_not_called()
+                self.assists.notify_user.assert_called_once_with(
+                    "Power distribution could not be confirmed. Travel Assist will continue."
+                )
+                if system_target:
+                    self.assists.fsd_assist.assert_called_once_with(None)
+                    self.assists.sc_assist.assert_not_called()
+                else:
+                    self.assists.fsd_assist.assert_not_called()
+                    self.assists.sc_assist.assert_called_once_with(None)
+
+    def test_power_inputs_are_not_sent_without_cockpit_focus(self):
+        self.assists.jn.ship_state.return_value = {"target": "Sol"}
+        self.assists.ship_control.goto_cockpit_view.return_value = False
+
+        self.assists.travel_assist(None)
+
+        self.power.assert_not_called()
+        self.assists.fsd_assist.assert_not_called()
+        self.assists.sc_assist.assert_not_called()
 
     def test_system_target_runs_fsd_route_without_local_target(self):
         self.assists.jn.ship_state.return_value = {"target": "Alpha Centauri"}
@@ -583,6 +635,7 @@ class TravelAssistTestCase(unittest.TestCase):
         self.assists.fsd_assist.assert_not_called()
         self.assists.sc_assist.assert_not_called()
         self.assists.ap_ckb.assert_called_once_with("log", "No local target found. Select a target and try again.")
+        self.power.assert_not_called()
 
     def test_stopped_travel_assist_does_not_start_local_phase(self):
         self.assists.jn.ship_state.return_value = {"target": "Alpha Centauri"}
@@ -949,7 +1002,9 @@ class FsdAssistResultTestCase(unittest.TestCase):
                 assists.jn.ship_state.return_value["target"] = True
                 assists.fsd_assist = Mock(return_value=result)
                 assists.sc_assist = Mock()
-                assists.travel_assist(None)
+                assists.ship_control = Mock()
+                with patch("routines.assists.set_power_distribution", return_value=True):
+                    assists.travel_assist(None)
 
                 if result is FsdAssistResult.InSystemTarget:
                     assists.sc_assist.assert_called_once_with(None)

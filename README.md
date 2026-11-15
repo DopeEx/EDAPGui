@@ -11,7 +11,8 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
 
 - **Travel Assist** follows the route selected in the Galaxy Map, including system scans and fuel management, then
   continues to a local destination reported by the game's `Status.json` and can request station docking. It does not
-  infer a local target from the compass when the status has no destination.
+  infer a local target from the compass when the status has no destination. On start, it confirms SYS/ENG/WEP
+  2/4/0 where possible and continues with a notice if confirmation fails;
 - **Waypoint Assist** follows saved routes to systems and stations, with docking, trading, cargo transfers and
   separate progress tracking. It plots Galaxy Map bookmarks first, confirms the system route and falls back to system
   name search if needed. After entering supercruise, it selects and confirms each next jump target before alignment;

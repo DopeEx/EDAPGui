@@ -7,7 +7,10 @@ This document summarizes the behavior currently implemented and lists a small nu
 ### Travel Assist
 
 1. Starts from the system route and/or local target selected in Elite Dangerous. If a system target remains, it
-   follows the Galaxy Map route; otherwise, it starts with the local target.
+   follows the Galaxy Map route; otherwise, it starts with the local target. Before flight, it confirms
+   **SYS 2 / ENG 4 / WEP 0** through Status.json. If already correct, no power inputs are sent; otherwise,
+   it confirms a **Balance Power Distribution** reset to 2/2/2 before setting and confirming 2/4/0.
+   If the distribution cannot be confirmed, Travel Assist displays a user message and continues the flight.
 2. During system travel, it avoids a bright star in front of the ship, aligns to the navigation compass, aligns to
    the target using screen detection, and starts the FSD jump.
 3. After each jump, it starts a discovery scan in a background thread, attempts to refuel, then accelerates to move
