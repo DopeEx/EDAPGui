@@ -22,7 +22,6 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 from paddleocr import PaddleOCR  # noqa: E402
 from strsimpy import SorensenDice  # noqa: E402
-from strsimpy.jaro_winkler import JaroWinkler
 
 from core.logger import logger
 from vision.diagnostics import save_case
@@ -47,7 +46,6 @@ class OCR:
             device="cpu",
         )
         # Class for text similarity metrics
-        self.jarowinkler = JaroWinkler()
         self.sorensendice = SorensenDice()
 
     def string_similarity(self, s1, s2) -> float:
@@ -56,7 +54,6 @@ class OCR:
         @param s2: The second string to compare.
         @return: The similarity from 0.0 (no match) to 1.0 (identical).
         """
-        # return self.jarowinkler.similarity(s1, s2)
         return self.sorensendice.similarity(s1, s2)
 
     def image_simple_ocr(self, image) -> list[str] | None:
@@ -89,8 +86,6 @@ class OCR:
         # Find the selected item/menu (solid orange)
         img_selected, x, y = self.get_highlighted_item_in_image(image, min_w, min_h)
         if img_selected is not None:
-            # cv2.imshow("img", img_selected)
-
             ocr_textlist = self.image_simple_ocr(img_selected)
 
             if ocr_textlist is not None:
@@ -129,19 +124,14 @@ class OCR:
         # Finding contours in B&W image. White are the areas detected
         contours, hierarchy = cv2.findContours(thresh1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # bounds = image
         cropped = image
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             # Check the item is greater than 90% of the minimum width or height. Which allows for some variation.
             if w > (min_w * 0.9) and h > (min_h * 0.9):
-                # Drawing a rectangle on the copied image
-                # bounds = cv2.rectangle(bounds, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
                 # Crop to leave only the contour (the selected rectangle)
                 cropped = image[y : y + h, x : x + w]
 
-                # cv2.imshow("cropped", cropped)
                 return cropped, x, y
 
         # No good matches, then return None
@@ -238,7 +228,6 @@ class OCR:
             return None
 
         ocr_textlist = self.image_simple_ocr(img_selected)
-        # print(str(ocr_textlist))
 
         if text.upper() in str(ocr_textlist):
             logger.debug(f"Found '{text}' text in item text '{str(ocr_textlist)}'.")

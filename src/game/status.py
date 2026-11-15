@@ -35,30 +35,6 @@ class StatusParser:
         self.current_data = self.get_cleaned_data()
         self.last_data = self.current_data
 
-    #     self.watch_thread = threading.Thread(target=self._watch_file_thread, daemon=True)
-    #     self.watch_thread.start()
-    #     self.status_queue = queue.Queue()
-    #
-    # def _watch_file_thread(self):
-    #     backoff = 1
-    #     while True:
-    #         try:
-    #             self._watch_file()
-    #         except Exception as e:
-    #             logger.debug('An error occurred when reading status file')
-    #             sleep(backoff)
-    #             logger.debug('Attempting to restart status file reader after failure')
-    #             backoff *= 2
-    #
-    # def _watch_file(self):
-    #     """Detects changes in the Status.json file."""
-    #     while True:
-    #         status = self.get_cleaned_data()
-    #         if status != self.current_data:
-    #             self.status_queue.put(status)
-    #             self.current_data = status
-    #         sleep(1)
-
     def get_file_modified_time(self) -> float:
         return os.path.getmtime(self.file_path)
 
@@ -188,8 +164,6 @@ class StatusParser:
         deadline = time.monotonic() + timeout if timeout is not None else None
         # Check if file changed
         if self.get_file_modified_time() == self.last_mod_time:
-            # logger.debug(f'Status.json mod timestamp {self.last_mod_time} unchanged.')
-            # print(f'Status.json mod timestamp {self.last_mod_time} unchanged.')
             return self.current_data
 
         # Read file
@@ -215,15 +189,8 @@ class StatusParser:
             elif deadline is not None:
                 sleep(min(0.1, max(0, deadline - time.monotonic())))
 
-        # Combine flags from Flags and Flags2 into a single dictionary
-        # combined_flags = {**self.translate_flags(data['Flags'])}
-
-        # if 'Flags2' in data:
-        #    combined_flags = {**combined_flags, **self.translate_flags2(data['Flags2'])}
-
         # Initialize cleaned_data with common fields
         cleaned_data = {
-            #'status': combined_flags,
             "time": (datetime.now() + timedelta(days=469711)).isoformat(),
             "timestamp": datetime.strptime(data["timestamp"], "%Y-%m-%dT%H:%M:%SZ"),
             "timestamp_delta": 0.0,  # Diff in seconds from the previous timestamp in file
@@ -288,12 +255,6 @@ class StatusParser:
         self.last_data = self.current_data
         self.current_data = cleaned_data
         self.last_mod_time = self.get_file_modified_time()
-        # logger.debug(f'Status.json mod timestamp {self.last_mod_time} updated.')
-        # print(f'Status.json mod timestamp {self.last_mod_time} updated.')
-        # print(json.dumps(data, indent=4))
-
-        # Enable the following to print all the changes to the status flags.
-        # self.log_flag_diffs()
 
         return cleaned_data
 

@@ -65,10 +65,6 @@ class EDStationServicesInShip:
             self.ap_ckb("log", "Could not confirm station services. Waypoint Assist stopped.")
             return False
 
-        # Store image
-        # image = self.screen.get_screen_rect_pct(scl_reg['rect'])
-        # cv2.imwrite(paths.debug_path('station-services', 'station-services.png'), image)
-
         return True
 
     def goto_construction_services(self) -> bool:
@@ -80,7 +76,6 @@ class EDStationServicesInShip:
         self.keys.send("UI_Down")  # station services
         self.keys.send("UI_Select")  # station services
 
-        # TODO - replace with OCR from OCR branch?
         sleep(3)  # wait for new menu to finish rendering
 
         return True

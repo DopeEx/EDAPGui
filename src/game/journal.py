@@ -18,8 +18,6 @@ from core.constants import ship_name_map, ship_size_map
 from core.logger import logger
 from game.known_paths import FOLDERID, UserHandle, get_path
 
-# TODO: thinking self.ship()[name] uses the same names as in the journal, so can lookup same construct
-
 
 def get_ship_size(ship: str) -> str:
     """Gets the ship size from the journal ship name.
@@ -99,10 +97,8 @@ def check_sco_fsd(modules: list[dict[str, any]] | None) -> bool:
     for module in modules:
         if module["Slot"] == "FrameShiftDrive":
             if "overcharge" in module["Item"].lower():
-                # print("FrameShiftDrive has SCO!")
                 return True
 
-    # print("FrameShiftDrive has no SCO")
     return False
 
 
@@ -221,7 +217,6 @@ class EDJournal:
                 self._market_transactions.append((self._market_sequence, dict(log)))
 
             elif log_event.casefold() == "fileheader":
-                # self.ship['odyssey'] = log['Odyssey']
                 self.ship["odyssey"] = True  # hardset to true for ED 4.0 since menus now same for Horizon
                 language = log.get("language")
                 if language is not None and (not isinstance(language, str) or not language.strip()):
@@ -282,7 +277,6 @@ class EDJournal:
 
             elif log_event == "Undocked":
                 self.ship["status"] = "starting_undocking"
-                # self.ship['status'] = 'in_space'
 
             elif log_event == "DockingRequested":
                 self.ship["status"] = "starting_docking"
@@ -390,8 +384,6 @@ class EDJournal:
                 self.ship["location"] = log["StarSystem"]
                 self.ship["cur_star_system"] = log["StarSystem"]
                 self.ship["system_address"] = log.get("SystemAddress")
-            # TODO                if 'StarClass' in log:
-            # TODO                    self.ship['star_class'] = log['StarClass']
 
             # parse target
             if log_event == "FSDTarget":

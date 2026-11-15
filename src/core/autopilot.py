@@ -253,9 +253,6 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         self.discovery_scan_thread = None
         self._tce_integration = None
 
-        # used this to write the self.config table to the json file
-        # self.write_config(self.config)
-
         cnf = self.read_config()
         # if we read it then point to it, otherwise use the default table above
         if cnf is not None:
@@ -305,7 +302,6 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         if shp_cnf is not None:
             if len(shp_cnf) != len(self.ship_configs):
                 # If configs of different lengths, then a new parameter was added.
-                # self.write_config(self.config)
                 # Add default values for new entries
                 if "Ship_Configs" not in shp_cnf:
                     shp_cnf["Ship_Configs"] = dict()
@@ -885,16 +881,6 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         self.set_ap_status("Idle")
         self.update_route_info()
 
-        # Performs left menu ops to request docking
-
-        # a set of convience routes to pitch, rotate by specified degress
-
-        # Disabled until SC to station enabled.
-        # if self._single_waypoint_station != "":
-        #     res = self.supercruise_to_station(self.scrReg, self._single_waypoint_station)
-        #     if res is False:
-        #         return False
-
     # Interrupt the engine loop so the active assist can stop promptly.
     def ctype_async_raise(self, thread_obj, exception):
         if not thread_obj.is_alive():
@@ -1252,22 +1238,11 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
 # This main is for testing purposes.
 #
 def main():
-    # handle = win32gui.FindWindow(0, "Elite - Dangerous (CLIENT)")
-    # if handle != None:
-    #    win32gui.SetForegroundWindow(handle)  # put the window in foreground
-
     ed_ap = EDAutopilot(cb=None, do_thread=False)
     sleep(2)
 
     for x in range(10):
-        # target_align(scrReg)
         print("Calling nav_align")
-        # ed_ap.nav_align(ed_ap.scrReg)
-
-        # loc = get_destination_offset(scrReg)
-        # print("get_dest: " +str(loc))
-        # loc = get_nav_offset(scrReg)
-        # print("get_nav: " +str(loc))
         cv2.waitKey(0)
         print("Done nav")
         sleep(8)

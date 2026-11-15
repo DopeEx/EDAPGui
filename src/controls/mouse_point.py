@@ -26,8 +26,6 @@ class MousePoint:
         self.term = True
         return True
 
-        # print('{0} at {1}'.format('Pressed' if pressed else 'Released', (x1, y1)))
-
     def get_location(self):
         self.term = False
         self.x = 0
@@ -58,13 +56,6 @@ class MousePoint:
 def main():
     m = MousePoint()
 
-    # x, y = m.get_location()
-
-    # print(str(x)+' '+str(y))
-
-    # x, y = m.get_location()
-
-    # print(str(x)+' '+str(y))
     m.do_click(1977, 510)
     """
     for i in range(2):

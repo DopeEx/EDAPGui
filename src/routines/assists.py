@@ -76,9 +76,6 @@ class AssistsMixin:
 
         # If waypoint file has a Station Name associated then attempt targeting it
         self.set_ap_status(f"Targeting Station: {station_name}")
-        # res = self.nav_panel.lock_destination(station_name)
-        # if not res:
-        #    return False
 
         # if we are starting the waypoint docked at a station, we need to undock first
         if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
@@ -219,17 +216,11 @@ class AssistsMixin:
             statistics.end_route()
 
     def _fsd_assist(self, scr_reg, expected_system: str | None = None) -> FsdAssistResult:
-        # TODO - can we enable this? Seems like a better way
-        # nav_route_parser = NavRouteParser()
         logger.debug("self.jn.ship_state=" + str(self.jn.ship_state()))
 
-        # TODO - can we enable this? Seems like a better way
-        # if nav_route_parser.get_last_system() is not None:
         aborted = False
 
         # Keep jumping as long as there is a system to jump to.
-        # TODO - can we enable this? Seems like a better way
-        # while nav_route_parser.get_last_system() is not None:
         while (
             self.jn.ship_state()["cur_star_system"].casefold() != expected_system.casefold()
             if expected_system
@@ -457,7 +448,6 @@ class AssistsMixin:
             if self.try_sc_disengage(scr_reg):
                 break
 
-        # TODO - find a better way to clear these
         if self.debug_overlay:
             sleep(2)
             self.overlay.overlay_remove_rect("sc_disengage_active")

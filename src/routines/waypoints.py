@@ -1193,10 +1193,6 @@ class EDWayPoint:
                         and "ColonisationShip".upper() in cur_station.upper()
                     ):
                         docked_at_stn = True
-                # elif next_wp_station.startswith('Orbital Construction Site'.upper()):
-                #     if (cur_station_type == 'SurfaceStation'.upper() and
-                #             'Orbital Construction Site'.upper() in cur_station.upper()):
-                #         docked_at_stn = True
                 elif cur_station == next_wp_station:
                     docked_at_stn = True
             logger.debug("Waypoint docking check: id=%s docked=%s at_target=%s", dest_key, is_docked, docked_at_stn)
@@ -1376,31 +1372,6 @@ def main():
     wp.ap.stn_svcs_in_ship.sell_commodity(keys, "Aluminium", 1, wp.cargo_parser)
     wp.ap.stn_svcs_in_ship.sell_commodity(keys, "Beryllium", 1, wp.cargo_parser)
     wp.ap.stn_svcs_in_ship.sell_commodity(keys, "Cobalt", 1, wp.cargo_parser)
-    # wp.ap.stn_svcs_in_ship.buy_commodity(keys, "Titanium", 5, 200)
-
-    # dest = 'Enayex'
-    # print(dest)
-
-    # print("In waypoint_assist, at:"+str(dest))
-
-    # already in doc config, test the trade
-    # wp.execute_trade(keys, dest)
-
-    # Set the Route for the waypoint^#
-    # dest = wp.waypoint_next(ap=None)
-
-    # while dest != "":
-
-    #  print("Doing: "+str(dest))
-    #  print(wp.waypoints[dest])
-
-    # wp.set_station_target(None, dest)
-
-    # Mark this waypoint as complated
-    # wp.mark_waypoint_complete(dest)
-
-    # set target to next waypoint and loop
-    # dest = wp.waypoint_next(ap=None)
 
 
 if __name__ == "__main__":

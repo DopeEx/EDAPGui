@@ -48,7 +48,6 @@ class TceIntegration:
                 # Go through global buy commodities list
                 for i, commodity in enumerate(global_buy_commodities):
                     qty = global_buy_commodities[commodity]
-                    # if qty > 0:
                     logger.debug(f"Need {commodity}: {global_buy_commodities[commodity]}")
                     if good["Tradegood"].upper() == commodity.upper():
                         good_id = good["ID"]
@@ -114,7 +113,6 @@ class TceIntegration:
 
         query = f"SELECT * FROM {table_name}"
         data = self.fetch_data_as_dict(filepath, query)
-        # print(data)
         return data
 
 

@@ -42,27 +42,6 @@ class EDNavigationPanel:
         self.nav_pnl_location_width = 500  # Nav panel location width in pixels at 1920x1080
         self.nav_pnl_location_height = 35  # Nav panel location height in pixels at 1920x1080
 
-    def request_docking_ocr(self) -> bool:
-        """Try to request docking with OCR."""
-        # res = self.show_contacts_tab()
-        # if res is None:
-        #     return None
-        # if not res:
-        #     print("Contacts Panel could not be opened")
-        #     return False
-        #
-        # # On the CONTACT TAB, go to top selection, do this 4 seconds to ensure at top
-        # # then go right, which will be "REQUEST DOCKING" and select it
-        # self.keys.send("UI_Down")  # go down
-        # self.keys.send('UI_Up', hold=2)  # got to top row
-        # self.keys.send('UI_Right')
-        # self.keys.send('UI_Select')
-        # sleep(0.3)
-        #
-        # self.hide_nav_panel()
-        # return True
-        pass
-
     def _navigation_tab(self) -> bool:
         return self._show_tab("navigation")
 

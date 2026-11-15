@@ -70,7 +70,6 @@ class EDSystemMap:
                 return True
 
             elif bookmark_type.lower().startswith("nav"):
-                # TODO - Move to, or call Nav Panel code instead?
                 # This is a nav-panel bookmark
                 # Goto cockpit view
                 self.ap.ship_control.goto_cockpit_view()
@@ -102,11 +101,6 @@ class EDSystemMap:
             # Goto System Map
             self.ap.keys.send("SystemMapOpen")
 
-            # Wait for map to load
-            # if not self.status_parser.wait_for_gui_focus(GuiFocusSystemMap):
-            #     logger.debug("goto_galaxy_map: System map did not open.")
-
-            # TODO - Add OCR to check screen loaded
             # Scale the regions based on the target resolution.
             scl_reg = reg_scale_for_station(
                 self.reg["cartographics"], self.screen.screen_width, self.screen.screen_height
@@ -114,8 +108,6 @@ class EDSystemMap:
 
             # Wait for screen to appear. The text is the same, regardless of language.
             self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], scl_reg)
-
-            # sleep(3.5)
         else:
             logger.debug("System Map is already open")
             self.keys.send("UI_Left")

@@ -1,7 +1,5 @@
 """Text to speech output."""
 
-# pip install pyttsx3
-
 import queue
 from time import sleep
 
@@ -9,12 +7,6 @@ import kthread
 import pyttsx3
 
 from core.logger import logger
-
-# rate = voiceEngine.getProperty('rate')
-# volume = voiceEngine.getProperty('volume')
-# voice = voiceEngine.getProperty('voice')
-# voiceEngine.setProperty('rate', newVoiceRate)
-# voiceEngine.setProperty('voice', voice.id)   id = 0, 1, ...
 
 
 class Voice:

@@ -208,7 +208,6 @@ class EDInternalStatusPanel:
         ap.keys.send("HeadLookReset")
         logger.debug("End of unload FC")
         return True
-        # quit()
 
     def transfer_from_fleetcarrier(self, ap, buy_commodities):
         """Do not reinterpret commodity IDs as the obsolete unverified row-index transfer."""

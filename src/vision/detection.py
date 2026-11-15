@@ -284,7 +284,6 @@ class DetectionMixin:
         compass_image = icompass_image[
             abs(pt[1] - pad) : pt[1] + c_hgt + pad, abs(pt[0] - pad) : pt[0] + c_wid + pad
         ].copy()
-        # compass_image_gray = cv2.cvtColor(compass_image, cv2.COLOR_BGR2GRAY)
 
         # find the nav point within the compass box
         navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = scr_reg.match_template_in_image_x3(
@@ -399,10 +398,8 @@ class DetectionMixin:
         }
 
         if self.cv_frames.is_open("compass"):
-            # icompass_image_d = cv2.cvtColor(compass_image_gray, cv2.COLOR_GRAY2RGB)
             icompass_image_d = icompass_image.copy()
             cv2.rectangle(icompass_image_d, pt, (pt[0] + c_wid, pt[1] + c_hgt), (0, 0, 255), 2)
-            # cv2.rectangle(icompass_image_display, pt, (pt[0]+c_wid, pt[1]+c_hgt), (0, 0, 255), 2)
             cv2.rectangle(
                 icompass_image_d,
                 (pt[0] + n_pt[0] - pad, pt[1] + n_pt[1] - pad),
@@ -410,11 +407,6 @@ class DetectionMixin:
                 (0, 255, 0),
                 1,
             )
-            # cv2.rectangle(icompass_image_display, (pt[0]+n_pt[0]-pad, pt[1]+n_pt[1]-pad), (pt[0]+n_pt[0] + wid-pad, pt[1]+n_pt[1] + hgt-pad), (0, 0, 255), 2)
-
-            #   dim = (int(destination_width/3), int(destination_height/3))
-
-            #   img = cv2.resize(dst_image, dim, interpolation =cv2.INTER_AREA)
             icompass_image_d = cv2.rectangle(icompass_image_d, (0, 0), (1000, 60), (0, 0, 0), -1)
             cv2.putText(
                 icompass_image_d,
@@ -436,7 +428,6 @@ class DetectionMixin:
                 1,
                 cv2.LINE_AA,
             )
-            # cv2.putText(icompass_image_d, f'Result: {result}', (1, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
             cv2.putText(
                 icompass_image_d,
                 f"x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} z: {final_z_pct:5.2f}",
@@ -623,10 +614,6 @@ class DetectionMixin:
         final_x = (pt[0] + anchor_x) - (scr_reg.screen.screen_width / 2 - region_left)
         final_y = (scr_reg.screen.screen_height / 2 - region_top) - (pt[1] + anchor_y)
 
-        #  print("get dest, final:" + str(final_x)+ " "+str(final_y))
-        #  print(destination_width, destination_height, width, height)
-        #  print(maxLoc)
-
         if self.cv_frames.is_open("target"):
             dst_image_d = cv2.cvtColor(dst_image, cv2.COLOR_GRAY2RGB)
             try:
@@ -777,7 +764,6 @@ class DetectionMixin:
 
         if sim > sim_match:
             logger.info("Disengage message detected, sending the supercruise exit.")
-            # cv2.imwrite(paths.debug_path('disengage.png'), image)
             return True
 
         if reading.debug_images and not getattr(self, "_disengage_mismatch_saved", False):
