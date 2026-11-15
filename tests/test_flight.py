@@ -1,7 +1,7 @@
 """Tests for flight and target-alignment routines."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from core.constants import FlagsFsdCharging, FlagsFsdJump
 from core.types import ScTargetAlignReturn
@@ -85,6 +85,35 @@ class TargetAlignmentTestCase(unittest.TestCase):
             self.assertFalse(alignment.wait_for_sc_disengage(None, 10))
 
         self.assertEqual(alignment.keys.sent, [])
+
+
+class DiscoveryScanTestCase(unittest.TestCase):
+    def test_scan_uses_the_configured_fire_button_and_releases_it_after_confirmation(self):
+        flight = Mock()
+        flight.status.get_flag.return_value = True
+        flight.config = {"DiscoveryScanButton": "Secondary"}
+        ship = {"discovery_scans": 0}
+        flight.jn.ship_state.return_value = ship
+        flight.keys.send.side_effect = lambda _binding, state=None: (
+            ship.update(discovery_scans=1) if state == 1 else None
+        )
+
+        with patch("routines.flight.time.time", side_effect=[0, 0.1]), patch("routines.flight.sleep"):
+            self.assertTrue(FlightMixin.discovery_scan(flight))
+
+        self.assertEqual(
+            flight.keys.send.call_args_list,
+            [call("SecondaryFire", state=1), call("SecondaryFire", state=0)],
+        )
+
+    def test_scan_does_not_send_fire_input_outside_analysis_mode(self):
+        flight = Mock()
+        flight.status.get_flag.return_value = False
+
+        self.assertFalse(FlightMixin.discovery_scan(flight))
+
+        flight.keys.send.assert_not_called()
+        flight.ap_ckb.assert_called_once_with("log", "Not in Analysis Mode. Skipping Discovery Scanner (Honk).")
 
 
 class JumpRetryTestCase(unittest.TestCase):

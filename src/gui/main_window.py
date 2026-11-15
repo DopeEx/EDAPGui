@@ -52,9 +52,15 @@ MODES = (
     ("travel", "Travel Assist"),
     ("waypoint", "Waypoint Assist"),
     ("afk", "AFK Combat Assist"),
-    ("dss", "DSS Assist"),
+    ("discovery_scan", "Honk Assist"),
 )
 MODE_KEYS = {key for key, _ in MODES}
+MODE_TOOLTIPS = {
+    "discovery_scan": (
+        "Discovery Scanner Assist: runs the Discovery Scanner (D-Scanner/Honk) after entering a new system in "
+        "supercruise. Analysis Mode is required."
+    )
+}
 SAVE_TABS = ("Ship", "Settings", TAB_OVERLAY, "Debug")
 SAVE_TEXT = {
     "saved": ("\u2713 Saved", GREEN),
@@ -116,7 +122,7 @@ class APGui:
 
         self.TRAVEL_A_running = False
         self.WP_A_running = False
-        self.DSS_A_running = False
+        self.discovery_scan_assist_running = False
         self.SWP_A_running = False
         self.active_mode = None
 
@@ -225,7 +231,7 @@ class APGui:
             button = RoundButton(self.sidebar, self.metrics, key, label, lambda k=key: self._mode_clicked(k))
             button.pack(fill="x", padx=u(8), pady=u(2))
             self.items[key] = button
-            self.mode_tips[key] = add_tooltip(button, label)
+            self.mode_tips[key] = add_tooltip(button, MODE_TOOLTIPS.get(key, label))
         self.stop_button = RoundButton(
             self.sidebar, self.metrics, "stop", "Stop All", self.stop_all_assists, danger=True
         )
@@ -598,8 +604,8 @@ class APGui:
             self.start_travel()
         elif key == "waypoint":
             return self.start_waypoint()
-        elif key == "dss":
-            self.start_dss()
+        elif key == "discovery_scan":
+            self.start_discovery_scan_assist()
         else:
             self.ed_ap.set_afk_combat_assist(True)
             self.notify_user("AFK Combat Assist start")
@@ -609,8 +615,8 @@ class APGui:
             self.stop_travel()
         elif key == "waypoint":
             self.stop_waypoint()
-        elif key == "dss":
-            self.stop_dss()
+        elif key == "discovery_scan":
+            self.stop_discovery_scan_assist()
         else:
             self.ed_ap.set_afk_combat_assist(False)
             self.notify_user("AFK Combat Assist stop")
@@ -620,7 +626,8 @@ class APGui:
             button.set_active(key == self.active_mode)
             blocked = self.active_mode is not None and key != self.active_mode
             button.set_disabled(blocked)
-            self.mode_tips[key].configure(text="Stop the running assist first." if blocked else self._tip(key))
+            tip = "Stop the running assist first." if blocked else MODE_TOOLTIPS.get(key, self._tip(key))
+            self.mode_tips[key].configure(text=tip)
         self.stop_tip.configure(text=self._tip("stop", "Stop All"))
         if hasattr(self, "waypoint_editor"):
             self.waypoint_editor.set_running()
@@ -690,19 +697,19 @@ class APGui:
         self.notify_user("Waypoint Assist stop")
         self.ed_ap.vce.say("Waypoint Assist Off")
 
-    def start_dss(self):
-        logger.debug("Entered: start_dss")
-        self.ed_ap.set_dss_assist(True)
-        self.DSS_A_running = True
-        self.notify_user("DSS Assist start")
-        self.ed_ap.vce.say("DSS Assist On")
+    def start_discovery_scan_assist(self):
+        logger.debug("Entered: start_discovery_scan_assist")
+        self.ed_ap.set_discovery_scan_assist(True)
+        self.discovery_scan_assist_running = True
+        self.notify_user("Discovery Scanner Assist started")
+        self.ed_ap.vce.say("Discovery Scanner Assist on")
 
-    def stop_dss(self):
-        logger.debug("Entered: stop_dss")
-        self.ed_ap.set_dss_assist(False)
-        self.DSS_A_running = False
-        self.notify_user("DSS Assist stop")
-        self.ed_ap.vce.say("DSS Assist Off")
+    def stop_discovery_scan_assist(self):
+        logger.debug("Entered: stop_discovery_scan_assist")
+        self.ed_ap.set_discovery_scan_assist(False)
+        self.discovery_scan_assist_running = False
+        self.notify_user("Discovery Scanner Assist stopped")
+        self.ed_ap.vce.say("Discovery Scanner Assist off")
 
     def toggle_single_waypoint(self):
         if self.swp_var.get() and not self.SWP_A_running:

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from core.constants import (
+    FlagsAnalysisMode,
     FlagsCargoScoopDeployed,
     FlagsFsdCharging,
     FlagsFsdMassLocked,
@@ -97,6 +98,62 @@ class AfkCombatLoopTestCase(unittest.TestCase):
                 assists.vce.say.assert_not_called()
                 if failure == "evade":
                     assists.afk_combat.launch_fighter.assert_not_called()
+
+
+class DiscoveryScannerAssistTestCase(unittest.TestCase):
+    def make_assist(self, ship_states, analysis_mode, scan_results):
+        assists = Assists([])
+        assists.jn = Mock()
+        assists.jn.ship_state.side_effect = ship_states
+        assists.status = Mock()
+        assists.status.get_flag.side_effect = analysis_mode
+        assists.discovery_scan = Mock(side_effect=scan_results)
+        assists.set_ap_status = Mock()
+        assists.ap_ckb = Mock()
+        assists._prev_discovery_scan_system = None
+        assists._discovery_scan_attempt_system = None
+        return assists
+
+    def test_scan_skips_without_analysis_mode_then_runs_when_mode_is_enabled(self):
+        system = {"status": "in_supercruise", "cur_star_system": "Sol"}
+        assists = self.make_assist([system, system], [False, True], [True])
+
+        with (
+            patch("routines.assists.sleep", side_effect=[None, None, EdapInterruptError()]),
+            patch("routines.assists.set_focus_elite_window"),
+            self.assertRaises(EdapInterruptError),
+        ):
+            assists.discovery_scan_assist()
+
+        assists.discovery_scan.assert_called_once_with()
+        self.assertEqual(
+            assists.status.get_flag.call_args_list,
+            [call(FlagsAnalysisMode), call(FlagsAnalysisMode)],
+        )
+        self.assertEqual(assists._prev_discovery_scan_system, "Sol")
+
+    def test_failed_scan_is_not_recorded_and_retries_after_leaving_supercruise(self):
+        states = [
+            {"status": "in_supercruise", "cur_star_system": "Sol"},
+            {"status": "in_supercruise", "cur_star_system": "Sol"},
+            {"status": "in_space", "cur_star_system": "Sol"},
+            {"status": "in_supercruise", "cur_star_system": "Sol"},
+        ]
+        assists = self.make_assist(states, [True, True], [False, True])
+
+        with (
+            patch("routines.assists.sleep", side_effect=[None] * 4 + [EdapInterruptError()]),
+            patch("routines.assists.set_focus_elite_window"),
+            self.assertRaises(EdapInterruptError),
+        ):
+            assists.discovery_scan_assist()
+
+        self.assertEqual(assists.discovery_scan.call_count, 2)
+        self.assertEqual(assists._prev_discovery_scan_system, "Sol")
+        self.assertEqual(
+            assists.set_ap_status.call_args_list,
+            [call("Discovery Scan"), call("Idle"), call("Discovery Scan"), call("Idle")],
+        )
 
 
 class AfkCombatActionsTestCase(unittest.TestCase):
@@ -659,7 +716,7 @@ class FsdAssistResultTestCase(unittest.TestCase):
         assists.mnvr_to_target = Mock()
         assists.refuel = Mock(return_value=False)
         assists.position = Mock()
-        assists.honk = Mock()
+        assists.discovery_scan = Mock()
 
         with patch("routines.assists.sleep"):
             result = assists.fsd_assist(None)
@@ -846,7 +903,7 @@ class FsdAssistResultTestCase(unittest.TestCase):
         assists.config["FuelThreasholdAbortAP"] = 10
         assists.refuel = Mock()
         assists.position = Mock()
-        assists.honk = Mock()
+        assists.discovery_scan = Mock()
         assists.nav_route.get_next_system.side_effect = lambda name, address: (
             ("Intermediate", 3) if name == "LHS 20" else ("Arima", 2)
         )

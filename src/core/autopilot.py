@@ -16,7 +16,7 @@ import vision.screen
 import vision.templates
 from controls.keys import EDKeys
 from core import paths
-from core.config import ConfigMixin
+from core.config import ConfigMixin, migrate_discovery_scan_config
 from core.constants import SCOOPABLE_STAR_CLASSES, FlagsScoopingFuel, FlagsSupercruise, ship_size_map
 from core.logger import logger, set_log_level
 from core.statistics import AssistStatistics, format_eta
@@ -61,7 +61,7 @@ def _overlay_status_role(status: str) -> str:
         "Align",
         "Approaching target",
         "Docking",
-        "DSS Scan",
+        "Discovery Scan",
         "Deploying fighter",
         "Evading",
         "Entering supercruise",
@@ -184,7 +184,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         # NOTE!!! When adding a new config value below, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
         self.config = {
-            "DSSButton": "Primary",  # if anything other than "Primary", it will use the Secondary Fire button for DSS
+            "DiscoveryScanButton": "Primary",
             "JumpTries": 3,  #
             "NavAlignTries": 3,  #
             "RefuelThreshold": 65,  # if fuel level get below this level, it will attempt refuel
@@ -248,8 +248,9 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         self._single_waypoint_station = None
         self._single_waypoint_system = None
         self._waypoint_plot = None
-        self._prev_star_system = None
-        self.honk_thread = None
+        self._prev_discovery_scan_system = None
+        self._discovery_scan_attempt_system = None
+        self.discovery_scan_thread = None
         self._tce_integration = None
 
         # used this to write the self.config table to the json file
@@ -274,6 +275,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
             cnf.pop("OCRLanguage", None)
             if "DebugOverlay" not in cnf:
                 cnf["DebugOverlay"] = False
+            migrate_discovery_scan_config(cnf)
             _set_overlay_config_defaults(cnf)
             if str(cnf.get("OverlayTextFont", "")).casefold() == "eurostyle":
                 cnf["OverlayTextFont"] = "Rajdhani"
@@ -335,7 +337,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         self.travel_assist_enabled = False
         self.afk_combat_assist_enabled = False
         self.waypoint_assist_enabled = False
-        self.dss_assist_enabled = False
+        self.discovery_scan_assist_enabled = False
         self.single_waypoint_enabled = False
 
         # Create instance of each of the needed Classes
@@ -650,8 +652,8 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 ap_mode = "Waypoint Assist"
             elif self.afk_combat_assist_enabled:
                 ap_mode = "AFK Combat Assist"
-            elif self.dss_assist_enabled:
-                ap_mode = "DSS Assist"
+            elif self.discovery_scan_assist_enabled:
+                ap_mode = "Discovery Scanner Assist"
 
             ap_mode_color = "muted" if ap_mode == "Offline" else "active"
             ship_status, ship_color = _overlay_ship_status(ship_state["status"])
@@ -946,10 +948,12 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
             self.ctype_async_raise(self.ap_thread, EdapInterruptError)
         self.afk_combat_assist_enabled = enable
 
-    def set_dss_assist(self, enable=True):
-        if not enable and self.dss_assist_enabled:
+    def set_discovery_scan_assist(self, enable=True):
+        if enable and not self.discovery_scan_assist_enabled:
+            self._discovery_scan_attempt_system = None
+        if not enable and self.discovery_scan_assist_enabled:
             self.ctype_async_raise(self.ap_thread, EdapInterruptError)
-        self.dss_assist_enabled = enable
+        self.discovery_scan_assist_enabled = enable
 
     def set_single_waypoint_assist(self, system: str, station: str, enable=True):
         if not enable and self.single_waypoint_enabled:
@@ -966,7 +970,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 self.travel_assist_enabled,
                 self.waypoint_assist_enabled,
                 self.afk_combat_assist_enabled,
-                self.dss_assist_enabled,
+                self.discovery_scan_assist_enabled,
                 self.single_waypoint_enabled,
             )
         ):
@@ -1104,16 +1108,19 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 self.afk_combat_assist_enabled = False
                 self._finish_assist("afk_stop")
 
-            elif self.dss_assist_enabled:
-                logger.debug("Running dss_assist")
-                set_focus_elite_window()
-                self.update_overlay()
+            elif self.discovery_scan_assist_enabled:
+                logger.debug("Running Discovery Scanner Assist")
                 try:
-                    self.dss_assist()
+                    set_focus_elite_window()
+                    self.update_overlay()
+                    self.discovery_scan_assist()
                 except EdapInterruptError:
-                    logger.debug("Stopping DSS Assist")
-                self.dss_assist_enabled = False
-                self._finish_assist("dss_stop")
+                    logger.debug("Stopping Discovery Scanner Assist")
+                except Exception as error:
+                    logger.exception("Unexpected error in Discovery Scanner Assist")
+                    self.notify_user(f"Discovery Scanner Assist stopped: {error}", speak=True)
+                self.discovery_scan_assist_enabled = False
+                self._finish_assist("discovery_scan_stop")
 
             elif self.single_waypoint_enabled:
                 self.update_overlay()
