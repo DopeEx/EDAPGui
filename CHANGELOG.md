@@ -33,6 +33,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Removed the undocumented Navigation-panel system-bookmark type; legacy routes with a named station fall back to station-name selection.
 - Renamed DSS Assist to **Honk Assist** and use **Discovery Scanner Assist** in status, settings and documentation; existing fire-button settings migrate automatically.
 - Commodity suggestions now open when the search field is clicked and narrow as you type.
 - The Sell / transfer commodity suggestions now include the clearly labelled carrier/construction **All cargo** action. Quantity selection also offers a direct switch back to numeric entry.

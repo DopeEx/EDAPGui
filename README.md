@@ -17,8 +17,8 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
 - **Waypoint Assist** follows saved routes to systems and stations, with docking, trading, cargo transfers and
   separate progress tracking. It plots Galaxy Map bookmarks first, confirms the system route and falls back to system
   name search if needed. After entering supercruise, it selects and confirms each next jump target before alignment;
-  it verifies the selected commodity dialog before submitting a market trade and makes one
-  state-checked recovery attempt if the dialog cannot be read.
+  System Map bookmarks support Favorites, Bodies, Stations and Settlements. It verifies the selected commodity
+  dialog before submitting a market trade and makes one state-checked recovery attempt if the dialog cannot be read.
   After a confirmed sale, it waits for updated cargo data before selecting another trade.
   The **Waypoints** tab offers an integrated route editor, an ID-based commodity catalogue and copied-text trade-route
   import from copied text and Spansh planner files (including Legacy JSON inside the import view), route-level
@@ -52,20 +52,9 @@ EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance
 - Optional voice feedback, a debug overlay, and loading a TCE destination are also available.
 - **Game language** in Settings follows the game journal automatically or uses a selected language pack. English
   and German are included; additional recognition and commodity translations can be contributed as data-only packs.
-  Auto briefly waits for a new journal header on game restart instead of immediately reporting English fallback.
-  The application interface remains English. See [game languages](docs/Localization.md).
-  Both cockpit panels confirm the selected tab highlight after individual tab switches. Docking requires
-  Contacts and carrier deposits require Inventory; an unconfirmed tab stops the action instead of sending blind inputs.
-  English/German screenshot tests cover tab recognition for both HUD color schemes.
-  Navigation-row recognition also handles long, narrow selected highlights.
-  Dim cockpit highlights, including shaded default-orange highlights, use a bounded color-brightness fallback when normal detection fails.
-  Compass marker fallback handles dim HUD markers and hollow markers touching the compass rim,
-  even when a weak filled-marker template disagrees, with size checks scaled to the compass sphere.
-  Visible target rings tolerate small size variations without lowering the detection threshold, and the search reaches
-  higher to keep rings crossing the previous upper boundary in view.
-  Supercruise message detection requires a text-like cyan glyph arrangement, reducing OCR on cockpit decorations
-  and scattered HUD readouts. During supercruise approaches, message OCR runs in the background so target alignment
-  can continue; obsolete results cannot request a dropout.
+  Auto follows new journal headers after a game restart. The application interface remains English. See
+  [game languages](docs/Localization.md).
+- Docking and carrier operations confirm the required cockpit panel tab before sending controls.
 
 See the [waypoint guide](docs/Waypoint.md) for waypoint files and trade actions, and the
 [ship tuning guide](docs/RollPitchYaw.md) for roll, pitch, and yaw rates.
@@ -110,10 +99,8 @@ Their images scale proportionally when the windows are resized.
 Debug Overlay can be toggled
 without restarting; see the troubleshooting guide above for when its markings appear.
 Downloaded OCR models and the PaddleX cache are stored in the unversioned `user_data/cache/paddlex/`, outside the
-virtual environment. The first OCR run needs internet access to download the required models, including after this
-cache-location change. Existing models in the user's `.paddlex` folder are not moved or deleted automatically.
-Example waypoint files from `data/waypoints/` are copied there on first start. Only the current v2 schema is executable;
-use **Legacy JSON** to import old v1/earlier-v2 destinations and trade lists into a new draft, then review and save it.
+virtual environment. The first OCR run requires internet access to download the required models.
+Example waypoint files from `data/waypoints/` are copied there on first start.
 If an existing installation reports an incompatible virtual environment, remove its `venv` folder
 and run `install_requirements.bat`.
 

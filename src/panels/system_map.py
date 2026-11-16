@@ -29,66 +29,46 @@ class EDSystemMap:
     def set_sys_map_dest_bookmark(self, ap, bookmark_type: str, bookmark_position: int) -> bool:
         """Set the System Map destination using a bookmark.
         @param ap: ED_AP reference.
-        @param bookmark_type: The bookmark type (Favorite, Body, Station, Settlement or Navigation), Favorite
-         being the default if no match is made with the other options. Navigation is unique in that it uses
-         the Nav Panel instead of the System Map.
+        @param bookmark_type: The bookmark type (Favorite, Body, Station or Settlement), Favorite
+         being the default if no match is made with the other options.
         @param bookmark_position: The position in the bookmark list, starting at 1 for the first bookmark.
         @return: True if bookmark could be selected, else False
         """
+        if bookmark_type.lower().startswith("nav"):
+            logger.debug("Legacy Navigation-panel bookmark is unsupported; waypoint fallback may be used.")
+            return False
+
         if self.is_odyssey and bookmark_position != -1:
-            # Check if this is a nav-panel bookmark
-            if not bookmark_type.lower().startswith("nav"):
-                self.goto_system_map()
+            self.goto_system_map()
 
-                ap.keys.send("UI_Left")  # Go to BOOKMARKS
-                sleep(0.5)
-                ap.keys.send("UI_Select")  # Select BOOKMARKS
-                sleep(0.25)
-                ap.keys.send("UI_Right")  # Go to FAVORITES
-                sleep(0.25)
+            ap.keys.send("UI_Left")  # Go to BOOKMARKS
+            sleep(0.5)
+            ap.keys.send("UI_Select")  # Select BOOKMARKS
+            sleep(0.25)
+            ap.keys.send("UI_Right")  # Go to FAVORITES
+            sleep(0.25)
 
-                # If bookmark type is Fav, do nothing as this is the first item
-                if bookmark_type.lower().startswith("bod"):
-                    ap.keys.send("UI_Down", repeat=1)  # Go to BODIES
-                elif bookmark_type.lower().startswith("sta"):
-                    ap.keys.send("UI_Down", repeat=2)  # Go to STATIONS
-                elif bookmark_type.lower().startswith("set"):
-                    ap.keys.send("UI_Down", repeat=3)  # Go to SETTLEMENTS
+            # If bookmark type is Fav, do nothing as this is the first item
+            if bookmark_type.lower().startswith("bod"):
+                ap.keys.send("UI_Down", repeat=1)  # Go to BODIES
+            elif bookmark_type.lower().startswith("sta"):
+                ap.keys.send("UI_Down", repeat=2)  # Go to STATIONS
+            elif bookmark_type.lower().startswith("set"):
+                ap.keys.send("UI_Down", repeat=3)  # Go to SETTLEMENTS
 
-                sleep(0.25)
-                ap.keys.send("UI_Select")  # Select bookmark type, moves you to bookmark list
-                ap.keys.send("UI_Left")  # Sometimes the first bookmark is not selected, so we try to force it.
-                ap.keys.send("UI_Right")
-                sleep(0.25)
-                ap.keys.send("UI_Down", repeat=bookmark_position - 1)
-                sleep(0.25)
-                ap.keys.send("UI_Select", hold=3.0)
+            sleep(0.25)
+            ap.keys.send("UI_Select")  # Select bookmark type, moves you to bookmark list
+            ap.keys.send("UI_Left")  # Sometimes the first bookmark is not selected, so we try to force it.
+            ap.keys.send("UI_Right")
+            sleep(0.25)
+            ap.keys.send("UI_Down", repeat=bookmark_position - 1)
+            sleep(0.25)
+            ap.keys.send("UI_Select", hold=3.0)
 
-                # Close System Map
-                ap.keys.send("SystemMapOpen")
-                sleep(0.5)
-                return True
-
-            elif bookmark_type.lower().startswith("nav"):
-                # This is a nav-panel bookmark
-                # Goto cockpit view
-                self.ap.ship_control.goto_cockpit_view()
-
-                # get to the Left Panel menu: Navigation
-                ap.keys.send("HeadLookReset")
-                ap.keys.send("UIFocus", state=1)
-                ap.keys.send("UI_Left")
-                ap.keys.send("UIFocus", state=0)  # this gets us over to the Nav panel
-
-                ap.keys.send("UI_Up", hold=4)
-                ap.keys.send("UI_Down", repeat=bookmark_position - 1)
-                sleep(1.0)
-                ap.keys.send("UI_Select")
-                sleep(0.25)
-                ap.keys.send("UI_Select")
-                ap.keys.send("UI_Back")
-                ap.keys.send("HeadLookReset")
-                return True
+            # Close System Map
+            ap.keys.send("SystemMapOpen")
+            sleep(0.5)
+            return True
 
         return False
 

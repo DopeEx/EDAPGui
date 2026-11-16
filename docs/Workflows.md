@@ -309,5 +309,3 @@ These are deferred improvements for future consideration.
 - Assess explicit state confirmation for Orbital Construction Services instead of relying on a fixed menu-render delay.
 - Review waypoint arrival matching for Orbital Construction Sites; an older candidate name match was commented out, so confirm the intended journal name and current route behavior before adding support.
 - Assess handling of Thargoid shutdown during hyperspace only when its trigger and recovery can be validated safely.
-- Consider sharing Navigation-panel bookmark selection with the System Map path if it can be done without changing
-  the confirmed selection behavior.
