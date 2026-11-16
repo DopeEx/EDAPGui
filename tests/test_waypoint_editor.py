@@ -1167,6 +1167,7 @@ class EditorWidgetsTestCase(unittest.TestCase):
         dialog.variables["StationName"].set("Ohm City")
         dialog.variables["GalaxyBookmarkType"].set("Fav")
         dialog.variables["GalaxyBookmarkNumber"].set("1")
+        self.assertNotIn("Navigation", dialog.field_widgets["SystemBookmarkType"].cget("values"))
         dialog.buy.name.set("Polymere")
         dialog.buy.quantity.set("2")
         dialog.buy.set_item()

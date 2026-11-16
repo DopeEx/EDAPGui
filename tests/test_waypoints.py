@@ -400,6 +400,18 @@ class WaypointBookmarkSelectionTestCase(unittest.TestCase):
         self.wp.ap.system_map.set_sys_map_dest_bookmark.assert_called_once_with(self.wp.ap, "Station", 2)
         self.wp.ap.galaxy_map.set_gal_map_dest_bookmark.assert_not_called()
 
+    def test_legacy_navigation_bookmark_falls_back_to_station_name(self):
+        self.wp.ap.has_expected_in_system_target.return_value = False
+        self.wp.ap.system_map.set_sys_map_dest_bookmark.return_value = False
+        self.wp.ap.nav_panel.lock_destination.return_value = True
+
+        self.assertTrue(
+            self.wp._set_waypoint_local_destination({}, "Ohm City", False, "", 0, True, "Navigation Panel", 2)
+        )
+
+        self.wp.ap.system_map.set_sys_map_dest_bookmark.assert_called_once_with(self.wp.ap, "Navigation Panel", 2)
+        self.wp.ap.nav_panel.lock_destination.assert_called_once_with("Ohm City")
+
     def test_station_ocr_used_when_bookmarks_do_not_confirm_target(self):
         self.wp.ap.has_expected_in_system_target.return_value = False
         self.wp.ap.wait_for_expected_in_system_target.return_value = False

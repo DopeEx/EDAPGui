@@ -522,7 +522,7 @@ class WaypointForm(ttk.Frame):
                 ("StationName", "Station", None),
                 ("GalaxyBookmarkType", "Galaxy bookmark", ("", "Fav", "System", "Body", "Station", "Settlement")),
                 ("GalaxyBookmarkNumber", "Galaxy bookmark position", None),
-                ("SystemBookmarkType", "System bookmark", ("", "Fav", "Body", "Station", "Settlement", "Navigation")),
+                ("SystemBookmarkType", "System bookmark", ("", "Fav", "Body", "Station", "Settlement")),
                 ("SystemBookmarkNumber", "System bookmark position", None),
             )
             for key, label, choices in fields:
