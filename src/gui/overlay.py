@@ -442,7 +442,7 @@ class Overlay:
         self._size = (0, 0)
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._class_name = f"EDAPGuiOverlay_{id(self):x}"
+        self._class_name = f"EDFlightControlOverlay_{id(self):x}"
         self._class_atom = None
         self._wnd_class = None
         self._win_event_callback = _WINEVENTPROC(self._on_win_event)

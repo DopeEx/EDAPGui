@@ -28,7 +28,7 @@ except ModuleNotFoundError as error:
     sys.modules["paddleocr"] = SimpleNamespace(PaddleOCR=None)
     _STUBBED = True
 
-from core.autopilot import EDAutopilot  # noqa: E402
+from core.autopilot import Autopilot  # noqa: E402
 from gui.main_window import APGui  # noqa: E402
 
 if _STUBBED:
@@ -127,7 +127,7 @@ class StatisticsIntegrationTests(unittest.TestCase):
                 self.assertFalse(self.statistics.route_active)
 
     def test_stop_callback_ends_stats_before_interrupting_flight(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.statistics = self.statistics
         autopilot.travel_assist_enabled = True
         autopilot.ap_thread = Mock()
@@ -138,7 +138,7 @@ class StatisticsIntegrationTests(unittest.TestCase):
         autopilot.ctype_async_raise.assert_called_once()
 
     def make_overlay(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.statistics = self.statistics
         autopilot.config = {"OverlayTextEnable": True, "OverlayShowETA": True}
         autopilot.travel_assist_enabled = True

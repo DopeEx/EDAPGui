@@ -1,4 +1,4 @@
-"""Reads the keybindings used by EDAP from the *.binds files that are active in Elite Dangerous."""
+"""Reads the keybindings used by EDFC from the *.binds files that are active in Elite Dangerous."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ class KeyBindings:
                 logger.warning("\tget_bindings_<{}>= does not have a valid keyboard keybind.".format(key).upper())
                 self.missing_keys.append(key)
 
-        # Check for key collisions with the keys EDAP uses.
+        # Check for key collisions with the keys EDFC uses.
         reported = set()
         for key in self.keys_to_obtain:
             collisions = self.get_collisions(key)
@@ -65,7 +65,7 @@ class KeyBindings:
                 keyname = self.reversed_dict.get(self.keys[key]["key"], "Key not found")
                 warn_text = (
                     f"Key '{keyname}' is used for the following bindings: {collisions}. "
-                    "This MAY causes issues when using EDAP. Monitor and adjust accordingly."
+                    "This MAY causes issues when using EDFC. Monitor and adjust accordingly."
                 )
                 self.ap_ckb("log", f"WARNING: {warn_text}")
                 logger.warning(f"{warn_text}")
@@ -75,7 +75,7 @@ class KeyBindings:
         if binding_name != "":
             warn_text = (
                 f"Hotkey 'Key_End' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDAP accidentally being triggered."
+                f" ED to another key to avoid EDFC accidentally being triggered."
             )
             self.ap_ckb("log", f"WARNING: {warn_text}")
             logger.warning(f"{warn_text}")
@@ -84,7 +84,7 @@ class KeyBindings:
         if binding_name != "":
             warn_text = (
                 f"Hotkey 'Key_Insert' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDAP accidentally being triggered."
+                f" ED to another key to avoid EDFC accidentally being triggered."
             )
             self.ap_ckb("log", f"WARNING: {warn_text}")
             logger.warning(f"{warn_text}")
@@ -93,7 +93,7 @@ class KeyBindings:
         if binding_name != "":
             warn_text = (
                 f"Hotkey 'Key_PageUp' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDAP accidentally being triggered."
+                f" ED to another key to avoid EDFC accidentally being triggered."
             )
             self.ap_ckb("log", f"WARNING: {warn_text}")
             logger.warning(f"{warn_text}")
@@ -102,7 +102,7 @@ class KeyBindings:
         if binding_name != "":
             warn_text = (
                 f"Hotkey 'Key_Home' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDAP accidentally being triggered."
+                f" ED to another key to avoid EDFC accidentally being triggered."
             )
             self.ap_ckb("log", f"WARNING: {warn_text}")
             logger.warning(f"{warn_text}")
@@ -221,7 +221,7 @@ class KeyBindings:
         return " and ".join(ret)
 
     def get_binds_files(self) -> dict[str, Any]:
-        """The .binds file of each control category EDAP needs.
+        """The .binds file of each control category EDFC needs.
 
         StartPreset.4.start names the presets the game really uses. A category whose preset has no file (an
         unmodified preset built into the game) and the case that StartPreset.4.start is missing use the file that

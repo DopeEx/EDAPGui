@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          git archive --format=zip --prefix="EDAPGui-${version}/" -o "EDAPGui-${version}.zip" "$GITHUB_REF_NAME"
+          git archive --format=zip --prefix="EDFlightControl-${version}/" -o "EDFlightControl-${version}.zip" "$GITHUB_REF_NAME"
 
       - name: Create GitHub release
         env:
@@ -91,6 +91,6 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" "EDAPGui-${version}.zip" \
-            --title "EDAPGui ${GITHUB_REF_NAME}" \
+          gh release create "$GITHUB_REF_NAME" "EDFlightControl-${version}.zip" \
+            --title "ED Flight Control ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md

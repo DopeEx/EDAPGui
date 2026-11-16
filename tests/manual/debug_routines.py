@@ -9,7 +9,7 @@ from time import sleep
 import cv2
 import numpy as np
 
-from core.autopilot import EDAutopilot
+from core.autopilot import Autopilot
 from core.logger import logger
 from vision.regions import ScreenRegions
 from vision.screen import Screen
@@ -18,7 +18,7 @@ from vision.templates import ImageTemplates
 
 def main():
     # Uncomment one tests to be performed as each runs in a loop until exited.
-    # Run this file instead of the main EDAPGUI file.
+    # Run this file instead of the main ED Flight Control script.
     logger.setLevel(logging.DEBUG)  # Default to log all debug when running this file.
 
     # Rescale screenshots from the user scaling (i.e. 1920x1080 [0.75,0.75]
@@ -114,7 +114,7 @@ def draw_match_rect(img, pt1, pt2, color, thick):
 
 def compass_test():
     """Performs a compass test."""
-    ed_ap = EDAutopilot(cb=None)
+    ed_ap = Autopilot(cb=None)
     scr = ed_ap.scr
 
     templ = ImageTemplates(scr.screen_height)
@@ -151,7 +151,7 @@ def template_matching_test(region_name, template):
     """To test the template matching. Using the provided region and template.
     :param region_name: The name of the region with the required filter to apply to the image.
     :param template: The name of the template to find in each file being tested."""
-    # ed_ap = EDAutopilot(cb=None)
+    # ed_ap = Autopilot(cb=None)
     # scr = ed_ap.scr
     scr = Screen(cb=None)
 
@@ -182,7 +182,7 @@ def template_matching_test(region_name, template):
 def show_regions(region_names):
     """Draw a rectangle indicating the given region on the Elite Dangerous window.
     :param region_names: An array names of the regions to indicate on screen (i.e. ["compass", "target"])."""
-    ed_ap = EDAutopilot(cb=None)
+    ed_ap = Autopilot(cb=None)
     scr = ed_ap.scr
     ov = ed_ap.overlay
 

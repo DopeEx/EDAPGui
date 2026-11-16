@@ -2,7 +2,7 @@
 
 Waypoint Assist visits the systems and stations in a saved route, in order. It can dock and buy, sell or transfer
 cargo at each stop. You create and edit routes in the **Waypoints** tab; you do not need to edit files or know JSON.
-The last selected route is loaded again when EDAPGui starts.
+The last selected route is loaded again when ED Flight Control starts.
 
 ## Before you start
 
@@ -55,7 +55,7 @@ Treat examples as starting points: check their destinations, bookmarks and trade
 | **Cancel** | Leaves the form without applying its changes. |
 
 An asterisk (`*`) in the route dropdown means there are unsaved changes.
-If you switch routes or close the program, EDAPGui asks whether to save or discard them.
+If you switch routes or close the program, EDFC asks whether to save or discard them.
 Starting an unsaved route also requires saving it first.
 
 **Saving changes to an existing route resets its progress after confirmation.** All stops become pending again,
@@ -117,7 +117,7 @@ If the destination cannot be found or confirmed, the assist stops with a message
 
 **Check your Navigation filters:** the destination must be visible in the list. As an optional optimization, show
 only categories that could be stops on your route, such as stations, settlements or Fleet Carriers.
-EDAPGui does not change these filters for you. Do not hide a category needed later in the route.
+EDFC does not change these filters for you. Do not hide a category needed later in the route.
 
 Screen reading depends on resolution, HUD colors and the visible layout. Some icons or destination types may not
 be recognized reliably. If a valid destination is repeatedly missed, try a bookmark or report the problem.
@@ -264,7 +264,7 @@ Check the result in the game.
 ## Import a copied trade route
 
 You can paste **one complete Inara trade result**, in German or English.
-EDAPGui reads the pasted text; it does not access the website or refresh market information.
+EDFC reads the pasted text; it does not access the website or refresh market information.
 
 1. Choose **Import...** in the Route section.
 2. Choose **New route** or **Append to current**, and the game's commodity language.
@@ -285,7 +285,7 @@ Several results pasted together are not supported.
 
 ## Import a Spansh planner export
 
-Choose **Spansh file...** in the import view and select a CSV or JSON export. EDAPGui detects the supported planner
+Choose **Spansh file...** in the import view and select a CSV or JSON export. EDFC detects the supported planner
 format from the file contents; it does not contact Spansh or modify the selected file. Review the preview before
 choosing **Import draft**. The resulting route remains an unsaved, editable draft and does not start the assist.
 
@@ -332,7 +332,7 @@ For an unsaved route, quantities shown are the planned values, not the active ru
 Completed stops and remaining quantities are saved separately from the route.
 Remaining quantities use commodity IDs as well. Name-based progress from earlier local test files is not reused
 as if it belonged to the new ID-based route.
-After restarting EDAPGui, the assist can continue unfinished stops without deliberately repeating completed ones.
+After restarting ED Flight Control, the assist can continue unfinished stops without deliberately repeating completed ones.
 Check cargo first if the previous run ended during a trade.
 
 **Reset progress** makes all stops pending again and restores the route's saved trade quantities.

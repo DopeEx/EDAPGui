@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 from core import paths
 from core.constants import commodities, ship_name_map, ship_size_map, sorted_commodities
 from i18n.localization import LocalizationManager, normalize_text
@@ -146,6 +148,20 @@ class LocalizationTestCase(unittest.TestCase):
 
 
 class PathsTestCase(unittest.TestCase):
+    def test_application_icon_has_transparent_windows_sizes(self):
+        sizes = {(size, size) for size in (16, 24, 32, 48, 64, 128, 256)}
+        icon_path = paths.ASSETS_DIR / "icons" / "edfc.ico"
+        header = icon_path.read_bytes()
+        # Tk's Windows bitmap loader scales the first ICO entry to the native icon size.
+        first_size = (header[6] or 256, header[7] or 256)
+        self.assertEqual(first_size, max(sizes))
+        with Image.open(icon_path) as icon:
+            self.assertEqual(icon.ico.sizes(), sizes)
+            for size in sizes:
+                with self.subTest(size=size):
+                    frame = icon.ico.getimage(size).convert("RGBA")
+                    self.assertEqual(frame.getchannel("A").getextrema(), (0, 255))
+
     def test_project_folders_exist(self):
         for folder in (
             paths.ROOT / "src",

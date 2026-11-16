@@ -1,7 +1,7 @@
 # Keybindings
 
-EDAPGui reads keyboard bindings from Elite Dangerous' active custom preset. Assign a keyboard key to each action below
-in **Options > Controls**. The action names in the first column are the names EDAPGui reads from the `.binds` file.
+ED Flight Control reads keyboard bindings from Elite Dangerous' active custom preset. Assign a keyboard key to each action below
+in **Options > Controls**. The action names in the first column are the names EDFC reads from the `.binds` file.
 
 ## Required actions
 
@@ -44,8 +44,8 @@ in **Options > Controls**. The action names in the first column are the names ED
 | `GalaxyMapOpen` | Open Galaxy Map | Ship Controls > Mode Switches |
 | `SystemMapOpen` | Open System Map | Ship Controls > Mode Switches |
 
-EDAPGui's own global hotkeys are separate from these game bindings. Their defaults are **Home** (start Travel
-Assist) and **End** (stop assists). Configure them in the EDAPGui Settings tab and avoid assigning those same keys
+EDFC's own global hotkeys are separate from these game bindings. Their defaults are **Home** (start Travel
+Assist) and **End** (stop assists). Configure them in the ED Flight Control Settings tab and avoid assigning those same keys
 to Elite Dangerous actions.
 
 ## Fill missing bindings
@@ -58,4 +58,4 @@ asks before applying those changes. German and English keyboard layouts are supp
 - `fix_keybinds.bat --dry-run` previews the proposed changes without writing the preset.
 - A timestamped backup is made before a preset is changed.
 - Built-in presets have no editable `.binds` file. Switch to a custom preset before running the fixer.
-- Run the fixer again after changing in-game bindings so EDAPGui can read the active preset.
+- Run the fixer again after changing in-game bindings so EDFC can read the active preset.

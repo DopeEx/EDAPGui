@@ -5,7 +5,7 @@ Usage: python tools/make_keybind_defaults.py [preset files]
 Without arguments the presets in assets/keybind_presets/ are used, in the order keyboard and mouse, keyboard only,
 controller (the first one that has a key for an action wins).
 
-The result only holds the keys for the actions EDAP needs and which other actions share a key with them in the
+The result only holds the keys for the actions EDFC needs and which other actions share a key with them in the
 defaults (Elite allows that). Keys are stored under their US names, so they do not depend on the keyboard layout
 of the preset files.
 """
@@ -70,7 +70,7 @@ def main(paths):
     lines += [
         "}",
         "",
-        "# Other actions that share a key with an EDAP action in the default presets, so Elite accepts that.",
+        "# Other actions that share a key with an EDFC action in the default presets, so Elite accepts that.",
         "SHARED_IN_DEFAULTS: dict[str, frozenset[str]] = {",
     ]
     for name in REQUIRED_ACTIONS:

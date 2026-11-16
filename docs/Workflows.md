@@ -7,7 +7,8 @@ This document summarizes the behavior currently implemented and lists a small nu
 ### Travel Assist
 
 1. Starts from the system route and/or local target selected in Elite Dangerous. If a system target remains, it
-   follows the Galaxy Map route; otherwise, it starts with the local target. Before flight, it confirms
+   follows the Galaxy Map route; otherwise, it starts with the local target. The local destination must be reported
+   by `Status.json`; compass-only local targets are not inferred. Before flight, it confirms
    **SYS 2 / ENG 4 / WEP 0** through Status.json. If already correct, no power inputs are sent; otherwise,
    it confirms a **Balance Power Distribution** reset to 2/2/2 before setting and confirming 2/4/0.
    If the distribution cannot be confirmed, Travel Assist displays a user message and continues the flight.
@@ -73,6 +74,25 @@ they are departure checks, not collision avoidance during travel.
 For route editing, imports, trade options and troubleshooting, see the [Waypoint guide](Waypoint.md).
 The editor's **Plot to System/Station** buttons only select targets; they do not start travel or trading.
 
+### Interface and status overlay
+
+The main window is dark and has a fixed size. The sidebar arrow collapses it to a narrow icon strip, the pin keeps
+it on top, and the power button restarts or exits the program. Changes on the Ship, Overlay, Settings and Debug tabs
+are saved automatically; each tab's lower right corner shows the save state. Window position, collapsed state and
+pin state are remembered in `user_data/configs/gui.json`.
+
+**Settings > Activate Elite window for each key** is enabled by default for new configurations and when the setting
+is missing. Existing saved choices are preserved. It attempts to bring Elite Dangerous to the front before each
+key or group of keys, but Windows can reject the focus change; keep the game focused while an assist is active.
+
+The status overlay shows assist mode and status, ship status, fuel, current system, route destination, next star,
+jumps and route distance, with progress bars and an optional learned ETA for system travel. Its AP status matches
+the main window footer; the footer also shows jumps and route distance during route assists.
+
+Use the **Overlay** tab to set position, appearance, visible lines and their order. The overlay is excluded from
+screenshots and recordings by default. Enabling **Show in screenshots and recordings** also allows it to appear
+in the autopilot's own captures, where it can interfere with screen detection.
+
 ### Assist statistics and ETA
 
 The Info tab shows lifetime assisted jumps, lightyears and active time for the current account and individual ship,
@@ -132,7 +152,7 @@ Unknown database schema versions are rejected without rewriting the data.
 
 Storage errors disable statistics/ETA and explicitly notify the user; backup failures warn without stopping flight.
 A damaged database is never silently replaced with empty statistics or automatically restored from an older backup.
-To restore manually, close EDAPGui, preserve the damaged/current file, then copy a known-good backup to
+To restore manually, close ED Flight Control, preserve the damaged/current file, then copy a known-good backup to
 `statistics.sqlite3`. Restoration recovers only the data present in that backup.
 Same-folder backups protect against individual file damage, not disk failure or deletion of the whole folder;
 include `user_data/stats/` in an external backup for that protection.
@@ -177,6 +197,8 @@ Set **Debug > Log level > Debug** before reproducing a recognition problem. Norm
 `user_data/logs/autopilot.log`; the complete technical log, including those messages and debug details, is written to
 `user_data/debug/debug.log` while Debug is enabled. Both logs rotate separately in their respective folders on the first use of each log in a
 program run; up to ten older files are kept for each. The GUI's log-file button opens `autopilot.log`.
+For custom output locations, set `EDFC_LOG_DIR` for normal logs and `EDFC_DEBUG_DIR` for the detailed log and
+diagnostic images before starting the program.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
 The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
@@ -308,4 +330,5 @@ These are deferred improvements for future consideration.
   confirm the expected colors in both captured-screen and supplied-image modes.
 - Assess explicit state confirmation for Orbital Construction Services instead of relying on a fixed menu-render delay.
 - Review waypoint arrival matching for Orbital Construction Sites; an older candidate name match was commented out, so confirm the intended journal name and current route behavior before adding support.
-- Assess handling of Thargoid shutdown during hyperspace only when its trigger and recovery can be validated safely.
+- Defer changes to Thargoid shutdown recovery during hyperspace until reliable validation is possible.
+  Encounters are even rarer than ordinary hyperspace interdictions and cannot be reproduced reliably for routine testing.

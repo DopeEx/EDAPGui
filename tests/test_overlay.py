@@ -33,7 +33,7 @@ except ModuleNotFoundError as error:
     _PADDLEOCR_STUBBED = True
 
 from core.autopilot import (  # noqa: E402
-    EDAutopilot,
+    Autopilot,
     _overlay_fuel_segments,
     _overlay_next_star_segments,
     _overlay_ship_status,
@@ -48,7 +48,7 @@ if _PADDLEOCR_STUBBED:
 
 
 def _make_route_overlay(route_data, ship_state):
-    autopilot = EDAutopilot.__new__(EDAutopilot)
+    autopilot = Autopilot.__new__(Autopilot)
     autopilot.config = {
         "OverlayTextEnable": True,
         "OverlayShowMode": False,
@@ -178,7 +178,7 @@ class OverlayRenderingTests(unittest.TestCase):
         self.assertEqual(_overlay_ship_status("starting_carrier_jump"), ("Starting carrier jump", "value"))
 
     def test_update_overlay_shows_readable_ship_status(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.config = {
             "OverlayTextEnable": True,
             "OverlayShowMode": False,
@@ -212,7 +212,7 @@ class OverlayRenderingTests(unittest.TestCase):
             ],
         }
         cleared = {"event": "NavRouteClear", "Route": []}
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(side_effect=[route, cleared, cleared, cleared]))
         autopilot._overlay_route_active = False
         autopilot._overlay_route_signature = ()
@@ -236,7 +236,7 @@ class OverlayRenderingTests(unittest.TestCase):
                 {"StarSystem": "D", "SystemAddress": 4},
             ],
         }
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(return_value=route))
         autopilot._overlay_route_active = False
         autopilot._overlay_route_signature = ()
@@ -263,10 +263,10 @@ class OverlayRenderingTests(unittest.TestCase):
             {"StarSystem": "C", "StarPos": [3, 4, 12]},
         ]
 
-        self.assertEqual(EDAutopilot._get_overlay_route_distance(route, 0), (17.0, 17.0))
-        self.assertEqual(EDAutopilot._get_overlay_route_distance(route, 1), (12.0, 17.0))
-        self.assertEqual(EDAutopilot._get_overlay_route_distance(route, 2), (0, 17.0))
-        self.assertIsNone(EDAutopilot._get_overlay_route_distance([route[0], {}], 0))
+        self.assertEqual(Autopilot._get_overlay_route_distance(route, 0), (17.0, 17.0))
+        self.assertEqual(Autopilot._get_overlay_route_distance(route, 1), (12.0, 17.0))
+        self.assertEqual(Autopilot._get_overlay_route_distance(route, 2), (0, 17.0))
+        self.assertIsNone(Autopilot._get_overlay_route_distance([route[0], {}], 0))
 
     def test_route_distance_overlay_is_independent_of_jump_count(self):
         route = {
@@ -416,7 +416,7 @@ class OverlayRenderingTests(unittest.TestCase):
                 self.assertEqual(_overlay_fuel_segments(level, capacity, scooping, 65, 10), expected)
 
     def test_fuel_line_prefers_live_status_and_falls_back_to_journal(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.config = {"RefuelThreshold": 65, "FuelThreasholdAbortAP": 10}
         ship_state = {"fuel_level": 8, "fuel_capacity": 32, "is_scooping": False}
         autopilot._overlay_status = SimpleNamespace(get_cleaned_data=lambda: {"FuelMain": 24, "Flags": 1 << 11})
@@ -483,7 +483,7 @@ class OverlayRenderingTests(unittest.TestCase):
     def test_cleared_route_is_not_reported_complete_when_not_at_destination(self):
         route = {"event": "NavRoute", "Route": [{"StarSystem": "A"}, {"StarSystem": "B"}, {"StarSystem": "C"}]}
         cleared = {"event": "NavRouteClear", "Route": []}
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(side_effect=[route, cleared]))
         autopilot._overlay_route_active = False
         autopilot._overlay_route_signature = ()
@@ -500,7 +500,7 @@ class OverlayRenderingTests(unittest.TestCase):
         old_route = {"event": "NavRoute", "Route": [{"StarSystem": "A"}, {"StarSystem": "B"}]}
         cleared = {"event": "NavRouteClear", "Route": []}
         new_route = {"event": "NavRoute", "Route": [{"StarSystem": "B"}, {"StarSystem": "C"}]}
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(side_effect=[old_route, cleared, new_route]))
         autopilot._overlay_route_active = False
         autopilot._overlay_route_signature = ()
@@ -530,7 +530,7 @@ class OverlayRenderingTests(unittest.TestCase):
             ],
         }
         cleared = {"event": "NavRouteClear", "Route": []}
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(side_effect=[route, cleared, cleared, cleared]))
         autopilot._overlay_route_active = False
         autopilot._overlay_route_signature = ()
@@ -559,7 +559,7 @@ class OverlayRenderingTests(unittest.TestCase):
         for name, (systems, location) in cases.items():
             with self.subTest(name):
                 route = {"event": "NavRoute", "Route": [{"StarSystem": system} for system in systems]}
-                autopilot = EDAutopilot.__new__(EDAutopilot)
+                autopilot = Autopilot.__new__(Autopilot)
                 autopilot.nav_route = SimpleNamespace(get_nav_route_data=Mock(side_effect=[route, cleared, cleared]))
                 autopilot._overlay_route_active = False
                 autopilot._overlay_route_signature = ()
@@ -681,7 +681,7 @@ class OverlayRenderingTests(unittest.TestCase):
             _load_font.cache_clear()
 
     def test_refresh_loop_updates_until_terminated(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.terminate = False
         autopilot.update_overlay = Mock(side_effect=[RuntimeError("busy"), None, None])
 
@@ -997,7 +997,7 @@ class OverlayRenderingTests(unittest.TestCase):
         self.assertIn((*ImageColor.getrgb(BLUE), 255), image.getdata())
 
     def test_enable_refreshes_and_disable_clears_without_restarting(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.config = {"OverlayTextEnable": False}
         autopilot.overlay = Mock()
 
@@ -1031,7 +1031,7 @@ class OverlayRenderingTests(unittest.TestCase):
                 )
             for ending, error in cases:
                 with self.subTest(assist=flag, ending=ending):
-                    autopilot = EDAutopilot.__new__(EDAutopilot)
+                    autopilot = Autopilot.__new__(Autopilot)
                     autopilot.terminate = False
                     autopilot.refresh_game_language = Mock(return_value=True)
                     autopilot.gui_loaded = False
@@ -1086,7 +1086,7 @@ class OverlayRenderingTests(unittest.TestCase):
                             )
 
     def test_discovery_scan_unexpected_error_is_reported_and_assist_is_finished(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.terminate = False
         autopilot.refresh_game_language = Mock(return_value=True)
         autopilot.gui_loaded = False
@@ -1123,7 +1123,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.set_ap_status.assert_called_once_with("Idle")
 
     def _route_info_autopilot(self, location, address, travel=True):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.travel_assist_enabled = travel
         autopilot.waypoint_assist_enabled = False
         autopilot.single_waypoint_enabled = False
@@ -1175,7 +1175,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.ap_ckb.assert_not_called()
 
     def test_status_lines_can_be_hidden_and_compacted(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.config = {
             "OverlayTextEnable": True,
             "OverlayShowMode": True,
@@ -1227,7 +1227,7 @@ class OverlayRenderingTests(unittest.TestCase):
         autopilot.overlay.overlay_remove_progress_bar.assert_called_once_with("distance_bar")
 
     def test_unavailable_status_value_uses_muted_role(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.config = {
             "OverlayTextEnable": True,
             "OverlayShowMode": False,
@@ -1266,7 +1266,7 @@ class EngineLoopInterruptTests(unittest.TestCase):
     def test_idle_polling_interrupts_do_not_terminate_engine_loop(self):
         for language_ready in (False, True):
             with self.subTest(language_ready=language_ready):
-                autopilot = EDAutopilot.__new__(EDAutopilot)
+                autopilot = Autopilot.__new__(Autopilot)
                 autopilot.terminate = False
                 autopilot.refresh_game_language = Mock(return_value=language_ready)
                 autopilot._sc_sco_active_loop_thread = Mock(is_alive=Mock(return_value=True))
@@ -1293,7 +1293,7 @@ class EngineLoopInterruptTests(unittest.TestCase):
                 self.assertEqual(sleep_calls, 2)
 
     def test_stopping_assist_after_engine_thread_exits_is_safe(self):
-        autopilot = EDAutopilot.__new__(EDAutopilot)
+        autopilot = Autopilot.__new__(Autopilot)
         autopilot.ap_thread = Mock(is_alive=Mock(return_value=False))
         autopilot.travel_assist_enabled = True
         autopilot._end_statistics_assist = Mock()

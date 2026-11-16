@@ -33,9 +33,9 @@ WAYPOINT_PROGRESS_DIR = WAYPOINTS_DIR / "progress"
 LAST_WAYPOINT_ROUTE = CONFIG_DIR / "last_waypoint_route.json"
 STATISTICS_DB = USER_DATA / "stats" / "statistics.sqlite3"
 # Tests override both directories so they do not rotate real logs or diagnostic images.
-LOG_DIR = Path(os.environ["EDAP_LOG_DIR"]) if os.environ.get("EDAP_LOG_DIR") else USER_DATA / "logs"
+LOG_DIR = Path(os.environ["EDFC_LOG_DIR"]) if os.environ.get("EDFC_LOG_DIR") else USER_DATA / "logs"
 LOG_FILE = LOG_DIR / "autopilot.log"
-DEBUG_DIR = Path(os.environ["EDAP_DEBUG_DIR"]) if os.environ.get("EDAP_DEBUG_DIR") else USER_DATA / "debug"
+DEBUG_DIR = Path(os.environ["EDFC_DEBUG_DIR"]) if os.environ.get("EDFC_DEBUG_DIR") else USER_DATA / "debug"
 DEBUG_LOG_FILE = DEBUG_DIR / "debug.log"
 INCOMING_DEBUG_DIR = USER_DATA / "incoming-debug"
 

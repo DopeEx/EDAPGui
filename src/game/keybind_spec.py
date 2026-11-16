@@ -1,4 +1,4 @@
-"""The Elite Dangerous actions EDAP needs, and the rules used to choose keys for them."""
+"""The Elite Dangerous actions EDFC needs, and the rules used to choose keys for them."""
 
 from __future__ import annotations
 
@@ -44,8 +44,8 @@ REQUIRED_ACTIONS: dict[str, str] = {
     "CamZoomIn": GENERAL,  # Galaxy map zoom in
 }
 
-# Keys EDAP itself listens to. They are named the same in every keyboard layout.
-EDAP_HOTKEYS = ("Key_End", "Key_Insert", "Key_PageUp", "Key_Home")
+# Keys EDFC itself listens to. They are named the same in every keyboard layout.
+EDFC_HOTKEYS = ("Key_End", "Key_Insert", "Key_PageUp", "Key_Home")
 
 # Keys proposed for actions the shipped presets leave unbound: single keys without modifiers, no letters or
 # punctuation, because those are named differently depending on the keyboard layout.

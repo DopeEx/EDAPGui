@@ -3,62 +3,34 @@
 [![Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDopeEx%2FEDAPGui%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.checks.strategy.matrix%5B%27python-version%27%5D&label=python&color=blue)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/DopeEx/EDAPGui)](LICENSE)
 
-# EDAPGui
+# ED Flight Control
 
-EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance features.
+ED Flight Control (EDFC) is a third-party Windows flight-control and autopilot tool for Elite Dangerous, offering optional assistance features.
 
 ## What it can do
 
-- **Travel Assist** follows the route selected in the Galaxy Map, including system scans and fuel management, then
-  continues to a local destination reported by the game's `Status.json` and can request station docking. It does not
-  infer a local target from the compass when the status has no destination. On start, it confirms SYS/ENG/WEP
-  2/4/0 where possible and continues with a notice if confirmation fails; station approaches confirm compass
-  alignment before flying forward.
-- **Waypoint Assist** follows saved routes to systems and stations, with docking, trading, cargo transfers and
-  separate progress tracking. It plots Galaxy Map bookmarks first, confirms the system route and falls back to system
-  name search if needed. After entering supercruise, it selects and confirms each next jump target before alignment;
-  System Map bookmarks support Favorites, Bodies, Stations and Settlements. It verifies the selected commodity
-  dialog before submitting a market trade and makes one state-checked recovery attempt if the dialog cannot be read.
-  After a confirmed sale, it waits for updated cargo data before selecting another trade.
-  The **Waypoints** tab offers an integrated route editor, an ID-based commodity catalogue and copied-text trade-route
-  import from copied text and Spansh planner files (including Legacy JSON inside the import view), route-level
-  repetition, themed activation checkboxes and
-  target-only plot buttons. Station-name navigation
-  uses name-column OCR when bookmarks are unavailable (no editor warning), selects the first exact name match without a full-list
-  rescan, and confirms the selected tab for the standard orange and white/blue
-  HUD schemes. Market trades verify the buy/sell list and commodity dialog before submitting.
-  Rare goods held in cargo can be selected for sale even when the market reports zero demand.
-  See the [waypoint guide](docs/Waypoint.md) for setup, usage and limitations.
-- **Single Waypoint Assist** plots and travels to a system entered on the Debug tab.
-- **Honk Assist** attempts a Discovery Scanner scan after entering each new system in supercruise. Analysis Mode is
-  required.
-- **AFK Combat Assist** responds to shield and fighter losses, confirms escape transitions and NPC fighter launches,
-  prioritizes engines during escape and systems after dropout, and stops with a warning if confirmation fails.
-  Evasion and fighter-deployment status changes also use the enabled voice output.
-  See [other assists](docs/Workflows.md#other-assists) for requirements
-  and limitations.
-- **Status overlay** shows the assist mode and status, ship status, fuel, current system, route destination, next star,
-  jumps, route distance and an optional learned ETA on top of the game, with progress bars for jumps and distance.
-  ETA combines remaining system travel time with arrival in your PC's local time; it excludes station travel and trading.
-  Its AP status matches the
-  main window footer, whose middle shows jumps and route distance while a route assist runs. Position, appearance,
-  which lines are shown in which order, and whether screenshots and recordings may include the overlay are set on the
-  Overlay tab. By default it stays out of captures; when included, it can also interfere with the autopilot's own
-  screen detection.
-- **Assist statistics** on the Info tab retain assisted jumps, distance and active time per account and individual ship.
-  Ship identity includes both the journal ship ID and type as an additional safeguard.
-  Local jump-time history supplies the ETA and survives restarts, with automatic rotating database backups.
-  See [statistics and ETA](docs/Workflows.md#assist-statistics-and-eta) for measurement and backup details.
-- Optional voice feedback, a debug overlay, and loading a TCE destination are also available.
-- **Game language** in Settings follows the game journal automatically or uses a selected language pack. English
-  and German are included; additional recognition and commodity translations can be contributed as data-only packs.
-  Auto follows new journal headers after a game restart. The application interface remains English. See
-  [game languages](docs/Localization.md).
-- Docking and carrier operations confirm the required cockpit panel tab before sending controls.
+- **Travel Assist** follows Galaxy Map routes with discovery scans and refueling, then continues to a selected
+  local destination and requests docking where supported.
 
-See the [waypoint guide](docs/Waypoint.md) for waypoint files and trade actions, and the
-[ship tuning guide](docs/RollPitchYaw.md) for roll, pitch, and yaw rates.
-The waypoint guide also explains [first checks and reporting problems](docs/Waypoint.md#manual-validation-and-diagnostics).
+- **Waypoint Assist** visits saved systems and stations, with docking, trading, cargo transfers and resumable
+  progress. The integrated editor supports route repetition, target-only plotting, and imports from copied trade
+  routes, Spansh exports and legacy waypoint files.
+
+- **Honk Assist** attempts a Discovery Scanner scan on entering each new system in supercruise; Analysis Mode
+  is required.
+
+- **AFK Combat Assist** monitors shields and fighters, attempts escape when shields fail, and attempts NPC fighter
+  redeployment. Check its setup requirements and limitations before use.
+
+- **Status overlay and statistics** show flight status, fuel and route progress, with an optional learned ETA for
+  system travel. Local statistics track assisted jumps, distance and active time per account and ship.
+
+- **Game languages** support English and German recognition, automatic language selection and additional
+  data-only language packs. The application interface remains English.
+
+- **Additional tools** include optional voice feedback and diagnostic CV views.
+
+Detailed setup, behavior and limitations are covered in the guides under **Documentation** below.
 
 ## Requirements
 
@@ -69,38 +41,36 @@ The waypoint guide also explains [first checks and reporting problems](docs/Wayp
 - A borderless game window, default HUD colours, and UI brightness of at least 50%
 - A docking computer for automatic docking
 
-While an assist is active, keep Elite Dangerous focused and avoid switching to another window, as actions may affect
-the currently focused window. A very wide field of view can also make target detection less reliable.
+By default, EDFC attempts to focus Elite Dangerous before each key or group of keys. Still keep the game focused
+while an assist is active: Windows can reject focus changes, so inputs may reach another window.
+A very wide field of view can also make target detection less reliable.
 
 ## Install and start
 
 1. Download and extract the repository ZIP, or clone the repository.
-2. Run `start_ed_ap.bat`. On first start it creates a private `venv` folder, installs the requirements, and launches
-   EDAPGui. Python 3.13 is selected when available; otherwise the installer uses Python 3.12.
-3. Start Elite Dangerous and make sure the required keybindings are available. See the
-   [keybindings guide](docs/Keybindings.md); `fix_keybinds.bat` can fill missing bindings in a custom preset.
-4. In EDAPGui, set the roll, pitch, and yaw rates for the active ship. See the
-   [ship tuning guide](docs/RollPitchYaw.md).
+2. Run `start_edfc.bat`. On first start it creates a private `venv` folder, installs the requirements, and launches
+   ED Flight Control. Python 3.13 is selected when available; otherwise the installer uses Python 3.12.
+3. Start Elite Dangerous and make sure the required keybindings are available. `fix_keybinds.bat` can fill missing
+   bindings in a custom preset.
+4. In ED Flight Control, set the roll, pitch, and yaw rates for the active ship.
 5. Select an assist in the sidebar of the main window (only one assist runs at a time; **Stop All** safely stops it,
    including while the engine is waiting between actions). The
    default global hotkeys are **Home** (Travel Assist) and **End** (stop); change them in Settings if needed.
 
-The window is always dark and has a fixed size. The arrow at the bottom of the sidebar collapses it to a narrow icon
-strip, the pin keeps it on top of other windows, and the power button restarts or exits the program. Changes on the
-Ship, Overlay, Settings, and Debug tabs are saved automatically; the lower right corner of the tab shows whether they
-are saved. The window position, collapsed state, and pin are remembered in `user_data/configs/gui.json`.
+The sidebar can be collapsed, the window pinned on top, and settings are saved automatically.
 
 The program stores its settings, ship profiles, waypoint files, route progress, statistics, logs, and debug output in `user_data/`.
-Recognition measurements and OCR details are logged only at Debug level. In Debug mode, recognition problems can
-save local diagnostic images, including same-frame compass and target context and disengage OCR attempts that return
-unrelated text; see the [assist troubleshooting guide](docs/Workflows.md#vision-diagnostics).
-Four buttons on the Debug tab open individual CV views with dark title bars; X closes each window.
-Their images scale proportionally when the windows are resized.
-Debug Overlay can be toggled
-without restarting; see the troubleshooting guide above for when its markings appear.
-Downloaded OCR models and the PaddleX cache are stored in the unversioned `user_data/cache/paddlex/`, outside the
-virtual environment. The first OCR run requires internet access to download the required models.
-Example waypoint files from `data/waypoints/` are copied there on first start.
+
+**Updating:** Close the program, back up `user_data/`, and extract the new program files into the existing installation
+folder, overwriting program files but keeping `user_data/` and `venv`. Startup does not update installed packages
+automatically; if dependencies have changed, run `install_requirements.bat`. Follow any additional release instructions.
+
+**Moving to another folder:** Only when setting up a separate installation, copy your backed-up `user_data/` into it
+before the first start. Do not copy the old `venv`; let the starter create a new environment.
+
+The first OCR run requires internet access to download recognition models; they remain in `user_data/cache/paddlex/`
+when the virtual environment is recreated. Example routes from `data/waypoints/` are copied to
+`user_data/waypoints/` on first start.
 If an existing installation reports an incompatible virtual environment, remove its `venv` folder
 and run `install_requirements.bat`.
 
@@ -109,14 +79,12 @@ and run `install_requirements.bat`.
 - [Keybindings and automatic fixer](docs/Keybindings.md)
 - [Waypoint files, bookmarks, trading, and transfers](docs/Waypoint.md)
 - [Game languages and contributing language packs](docs/Localization.md)
-- [Assist workflows: current behavior and design direction](docs/Workflows.md)
+- [Assist workflows, overlay, statistics and troubleshooting](docs/Workflows.md)
 - [Ship roll, pitch, and yaw tuning](docs/RollPitchYaw.md)
 - [Project structure and development conventions](docs/Structure.md)
 - [Changelog](CHANGELOG.md)
 
 ## Development
-
-Before contributing, read and follow the [project structure and development conventions](docs/Structure.md).
 
 Install the runtime requirements and development tools in the active environment:
 
@@ -145,8 +113,6 @@ Waypoints tab:
 
 <img src="docs/screenshots/screen_cap_waypoints.png" alt="Waypoints tab with route repetition, active checkboxes and trade progress" width="700">
 
-See the [waypoint guide](docs/Waypoint.md#editor-screenshots) for editing and import screenshots.
-
 Overlay tab:
 
 <img src="docs/screenshots/screen_cap_overlay.png" alt="Overlay tab" width="700">
@@ -166,6 +132,12 @@ Info tab:
 Collapsed to the mode buttons:
 
 <img src="docs/screenshots/screen_cap_collapsed.png" alt="Collapsed sidebar" height="360">
+
+## License and origins
+
+ED Flight Control is developed from EDAPGui and builds on the original
+[EDAutopilot project by SKai2](https://github.com/skai2/EDAutopilot).
+It remains available under the [MIT license](LICENSE); the original copyright notice is preserved.
 
 ## Disclaimer
 

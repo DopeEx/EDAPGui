@@ -1361,9 +1361,9 @@ class EDWayPoint:
 
 
 def main():
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 
-    ed_ap = EDAutopilot(cb=None)
+    ed_ap = Autopilot(cb=None)
     wp = EDWayPoint(ed_ap, True)  # False = Horizons
     wp.step = 0  # start at first waypoint
     keys = EDKeys(cb=None)

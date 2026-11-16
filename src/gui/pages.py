@@ -4,7 +4,7 @@ import tkinter as tk
 
 import ttkbootstrap as ttk
 
-from core.version import EDAP_VERSION
+from core.version import EDFC_VERSION
 from gui.cv_view import CV_VIEWS
 from gui.fields import (
     DEFAULT_OVERLAY_LINE_ORDER,
@@ -296,7 +296,7 @@ def build_debug(app, page):
 def build_info(app, page):
     left, right = _columns(app, page)
     about = _card(app, left, "About")
-    ttk.Label(about, text=f"EDAutopilot {EDAP_VERSION}").grid(row=0, column=0, sticky="w", pady=app.metrics.u(4))
+    ttk.Label(about, text=f"ED Flight Control {EDFC_VERSION}").grid(row=0, column=0, sticky="w", pady=app.metrics.u(4))
     _button(app, about, "Open GitHub Page", app.about, 1)
     _button(app, about, "View Changelog", app.open_changelog, 2)
 

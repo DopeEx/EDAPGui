@@ -316,7 +316,7 @@ class PaddleOCRV3TestCase(unittest.TestCase):
         environment["PYTHONPATH"] = str(paths.ROOT / "src")
         environment["PADDLE_PDX_CACHE_HOME"] = str(paths.USER_DATA / "wrong-cache")
         with tempfile.TemporaryDirectory() as working_directory:
-            environment["EDAP_LOG_DIR"] = str(Path(working_directory) / "logs")
+            environment["EDFC_LOG_DIR"] = str(Path(working_directory) / "logs")
             result = subprocess.run(
                 [
                     sys.executable,

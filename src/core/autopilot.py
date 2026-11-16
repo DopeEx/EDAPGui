@@ -1,4 +1,4 @@
-"""The EDAutopilot class: setup, engine loop and setters.
+"""The Autopilot class: setup, engine loop and setters.
 
 Ideas taken from: https://github.com/skai2/EDAutopilot"""
 
@@ -169,7 +169,7 @@ def _overlay_next_star_segments(star_class) -> list[tuple[str, str]]:
 OVERLAY_REFRESH_INTERVAL = 1.0
 
 
-class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
+class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
     # Class-level defaults keep partially constructed instances (tests) working; __init__ sets per-instance values.
     _overlay_lock = threading.RLock()
     _overlay_last_frame = None
@@ -196,7 +196,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
             "HotKey_StartTravel": "home",  # if going to use other keys, need to look at the python keyboard package
             "HotKey_StopAllAssists": "end",
             "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
-            "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
+            "ActivateEliteEachKey": True,  # Activate Elite window before each key or group of keys
             "OverlayTextEnable": True,
             "OverlayTextYOffset": 15,
             "OverlayTextXOffset": 1,
@@ -257,6 +257,8 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         # if we read it then point to it, otherwise use the default table above
         if cnf is not None:
             # NOTE!!! Add default values for new entries below!
+            if "ActivateEliteEachKey" not in cnf:
+                cnf["ActivateEliteEachKey"] = self.config["ActivateEliteEachKey"]
             if "SunBrightThreshold" not in cnf:
                 cnf["SunBrightThreshold"] = 125
             if "TCEDestinationFilepath" not in cnf:
@@ -405,10 +407,10 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         # start the engine thread
         self.terminate = False  # terminate used by the thread to exit its loop
         if do_thread:
-            self.ap_thread = kthread.KThread(target=self.engine_loop, name="EDAutopilot")
+            self.ap_thread = kthread.KThread(target=self.engine_loop, name="Autopilot")
             self.ap_thread.start()
             self.overlay_refresh_thread = threading.Thread(
-                target=self._overlay_refresh_loop, name="EDAP overlay refresh", daemon=True
+                target=self._overlay_refresh_loop, name="EDFC overlay refresh", daemon=True
             )
             self.overlay_refresh_thread.start()
 
@@ -1128,7 +1130,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 self.single_waypoint_enabled = False
                 self._finish_assist("single_waypoint_stop")
 
-            # Check once EDAPGUI loaded to prevent errors logging to the listbox before loaded
+            # Wait until the GUI is loaded before logging to its listbox.
             if self.gui_loaded:
                 # Check if ship has changed
                 ship = self.jn.ship_state()["type"]
@@ -1238,7 +1240,7 @@ class EDAutopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
 # This main is for testing purposes.
 #
 def main():
-    ed_ap = EDAutopilot(cb=None, do_thread=False)
+    ed_ap = Autopilot(cb=None, do_thread=False)
     sleep(2)
 
     for x in range(10):

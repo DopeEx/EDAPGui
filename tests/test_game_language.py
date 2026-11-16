@@ -19,7 +19,7 @@ except ImportError:
     sys.modules["paddleocr"] = SimpleNamespace(PaddleOCR=None)
     _PADDLEOCR_STUBBED = True
 
-from core.autopilot import EDAutopilot  # noqa: E402
+from core.autopilot import Autopilot  # noqa: E402
 
 if _PADDLEOCR_STUBBED:
     del sys.modules["paddleocr"]
@@ -106,7 +106,7 @@ class GameLanguageTests(unittest.TestCase):
         self.enterContext(patch("core.autopilot.OCR.supports_language", return_value=True))
 
     def make_ap(self):
-        ap = EDAutopilot.__new__(EDAutopilot)
+        ap = Autopilot.__new__(Autopilot)
         ap.locale = LocalizationManager(str(paths.LOCALES_DIR))
         ap.config = {"Language": "auto"}
         ap._language_signature = None

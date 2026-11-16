@@ -1,4 +1,4 @@
-"""Finds gaps and conflicts in the keybindings EDAP needs and writes the fixes into the .binds files.
+"""Finds gaps and conflicts in the keybindings EDFC needs and writes the fixes into the .binds files.
 
 Existing bindings are only touched for real conflicts and only when the caller applies that change. Gaps are filled
 with the key of the default presets Frontier ships; if those have none, with a single key without modifiers.
@@ -19,7 +19,7 @@ from controls.directinput import key_name_for, scancode_for
 from game.binds_files import active_binds_files
 from game.keybind_defaults import DEFAULT_KEYS, SHARED_IN_DEFAULTS
 from game.keybind_spec import (
-    EDAP_HOTKEYS,
+    EDFC_HOTKEYS,
     FALLBACK_KEYS,
     PREFERRED_KEYS,
     REQUIRED_ACTIONS,
@@ -36,7 +36,7 @@ GAP = "gap"  # No keyboard key, a free slot gets one
 REPLACE = "replace"  # No keyboard key and no free slot, a slot of another device would be overwritten
 CONFLICT = "conflict"  # The key is shared with an action that must not share it, the key gets replaced
 
-HOTKEY = "hotkey"  # The key is one of the EDAP hotkeys
+HOTKEY = "hotkey"  # The key is one of the EDFC hotkeys
 UNKNOWN_KEY = "unknown_key"  # The key name is not known for the keyboard layout of the file
 NO_KEY_FOUND = "no_key_found"  # No free key was found
 
@@ -105,7 +105,7 @@ class BindsFile:
         return "+".join(names)
 
     def effective_slot(self, action: str) -> tuple[str, Slot] | None:
-        """The keyboard slot EDAP reads: the secondary one if it is a keyboard key, else the primary one."""
+        """The keyboard slot EDFC reads: the secondary one if it is a keyboard key, else the primary one."""
         slots = self.actions.get(action, {})
         for tag in reversed(SLOTS):
             slot = slots.get(tag)
@@ -177,13 +177,13 @@ def _candidates(action: str, file: BindsFile):
     for source, key, mods in sources:
         combo = (scancode_for(key), tuple(sorted(scancode_for(m) for m in mods)))
         name = file.key_name(combo)
-        if name is None or any(file.key_name((m, ())) is None for m in combo[1]) or name in EDAP_HOTKEYS:
+        if name is None or any(file.key_name((m, ())) is None for m in combo[1]) or name in EDFC_HOTKEYS:
             continue
         yield source, combo
 
 
 def build_plan(files: dict[str, BindsFile]) -> Plan:
-    """Compares the active .binds file of each category with what EDAP needs. Nothing is written."""
+    """Compares the active .binds file of each category with what EDFC needs. Nothing is written."""
     plan = Plan()
     used = {id(file): file.keyboard_combos() for file in files.values()}
     order = list(REQUIRED_ACTIONS)
@@ -202,10 +202,10 @@ def build_plan(files: dict[str, BindsFile]) -> Plan:
             if combo is None:
                 plan.notes.append(Note(UNKNOWN_KEY, action, category, file, slot.describe()))
                 continue
-            if not combo[1] and file.key_name(combo) in EDAP_HOTKEYS:
+            if not combo[1] and file.key_name(combo) in EDFC_HOTKEYS:
                 plan.notes.append(Note(HOTKEY, action, category, file, slot.describe()))
             partners = _conflicts(taken, action, combo)
-            # Of two EDAP actions that clash, the less important one is moved, so it is only reported once
+            # Of two EDFC actions that clash, the less important one is moved, so it is only reported once
             movers = [p for p in partners if not (p in REQUIRED_ACTIONS and order.index(p) > order.index(action))]
             if not movers:
                 continue
@@ -283,7 +283,7 @@ def apply_changes(file: BindsFile, changes: list[Change]) -> str:
 
 def write_file(file: BindsFile, text: str) -> Path:
     """Writes the new text and returns the path of the backup of the old file."""
-    backup = file.path.with_name(f"{file.path.name}.edap-{time.strftime('%Y%m%d-%H%M%S')}.backup")
+    backup = file.path.with_name(f"{file.path.name}.edfc-{time.strftime('%Y%m%d-%H%M%S')}.backup")
     shutil.copy2(file.path, backup)
     temp = file.path.with_name(file.path.name + ".tmp")
     temp.write_bytes((b"\xef\xbb\xbf" if file.bom else b"") + text.encode("utf-8"))

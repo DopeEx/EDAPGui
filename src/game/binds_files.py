@@ -10,7 +10,7 @@ GENERAL = "general"
 SHIP = "ship"
 
 # Lines of StartPreset.4.start, in the order of the controls menu: general, ship, SRV, on foot.
-# Only the first two are used by EDAP.
+# Only the first two are used by EDFC.
 START_PRESET_CATEGORIES = (GENERAL, SHIP)
 
 _VERSION = re.compile(r"\.(\d+)\.(\d+)\.binds$")
@@ -44,7 +44,7 @@ def resolve_preset(name: str, folder: Path | None = None) -> Path | None:
 
 
 def active_binds_files(folder: Path | None = None) -> dict[str, Path]:
-    """Maps the control categories used by EDAP to their active .binds file.
+    """Maps the control categories used by EDFC to their active .binds file.
 
     A category is left out if its preset has no file, which is the case for the unmodified presets built into the
     game (for example AdvancedControlPad2)."""
@@ -58,5 +58,5 @@ def active_binds_files(folder: Path | None = None) -> dict[str, Path]:
 
 
 def preset_names(folder: Path | None = None) -> dict[str, str]:
-    """Maps the control categories used by EDAP to the name of their active preset."""
+    """Maps the control categories used by EDFC to the name of their active preset."""
     return dict(zip(START_PRESET_CATEGORIES, read_start_preset(folder)))
