@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a problem with ED Flight Control.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve ED Flight Control.
+        Please use a short, descriptive title and report one problem per issue.
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Check existing issues
+      description: |
+        Search [open and closed issues](https://github.com/DopeEx/EDFlightControl/issues?q=is%3Aissue)
+        for a matching report. If one exists, add relevant details there instead of creating a duplicate.
+      options:
+        - label: I searched the existing issues for a matching report.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: ED Flight Control version
+      description: Copy the version shown on the Info tab. If the app cannot start, give the release or commit you downloaded, if known.
+      placeholder: Version from the Info tab, release name, commit, or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: What happened?
+      description: Describe the problem and include any error message you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us what you were doing and which assist or screen was involved. If it happened only once, describe what led up to it.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: What did you expect?
+      description: Describe what should have happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (optional)
+      description: |
+        Add what you know and what seems relevant: Windows/Python version, game language, ship,
+        screen resolution, SDR/HDR, or HUD colors. You do not need to look up every detail or test other setups.
+  - type: markdown
+    attributes:
+      value: |
+        **Please include the normal log if available:** `user_data/logs/autopilot.log` from the affected run
+        gives us a starting point even when Debug mode was not enabled. Save a copy before starting EDFC again;
+        startup rotates the previous log to a timestamped file in the same folder.
+
+        **Optional diagnostics:** For recognition problems, enable **Debug > Log level > Debug** before
+        trying to reproduce the issue, if practical. Detected failures can save diagnostic image crops in
+        `user_data/debug/`; the detailed log is `user_data/debug/debug.log`.
+        Not every incorrect recognition is detected automatically. You can still submit a report without diagnostics.
+        See [vision diagnostics](https://github.com/DopeEx/EDFlightControl/blob/main/docs/Workflows.md#vision-diagnostics).
+
+        **Issues and attachments are public.** Review logs and images for player information and other private
+        details before sharing. Do not upload unreviewed full-screen screenshots.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs, images or additional context (optional)
+      description: |
+        Ideally, attach the reviewed autopilot.log from the affected run, even without Debug output.
+        Drag files into this field or use GitHub's attachment control below it; you can also paste log excerpts.
+        Logs and images are optional. Avoid unrelated files or your entire user_data folder.

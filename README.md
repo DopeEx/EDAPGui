@@ -87,8 +87,9 @@ and run `install_requirements.bat`.
 ## Bug reports and feature requests
 
 Use this repository's [GitHub issue tracker](https://github.com/DopeEx/EDFlightControl/issues) for bug reports and feature
-requests, or select **Info > Report a bug** in the application. Include reproduction steps and your application
-version; review logs and diagnostic images for player information before sharing.
+requests, or select **Info > Report a bug** in the application. Search open and closed issues first, then choose
+**Bug report** or **Feature request** and complete the form. Review logs and diagnostic images for player information
+before sharing; attachments are optional.
 
 ## Development
 

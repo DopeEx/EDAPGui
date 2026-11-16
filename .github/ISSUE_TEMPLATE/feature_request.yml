@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest an improvement or new capability for ED Flight Control.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea. Please use a short, descriptive title and suggest one feature per issue.
+        You do not need to propose a technical implementation.
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Check existing issues
+      description: |
+        Search [open and closed issues](https://github.com/DopeEx/EDFlightControl/issues?q=is%3Aissue)
+        for a matching request. If one exists, add your use case there instead of creating a duplicate.
+      options:
+        - label: I searched the existing issues for a matching request.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem or need would this address?
+      description: Describe what you are trying to do and what is missing or difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: desired-behavior
+    attributes:
+      label: What would you like to happen?
+      description: Describe the desired behavior and, if possible, an example of when it would help.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives (optional)
+      description: Have you tried a workaround or considered a different approach?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context (optional)
+      description: Add examples or reviewed images if helpful. Issues and attachments are public; remove player information and other private details before sharing.

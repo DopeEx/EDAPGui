@@ -319,10 +319,18 @@ The README directs bug reports and feature requests to the repository's GitHub i
 automatically attach logs, images or other local files. The existing **Open GitHub Page** button opens the repository
 homepage.
 
-Remaining tasks:
+Choose **Bug report** or **Feature request**. Both forms require confirmation that you searched open and closed
+issues first; add relevant details to an existing matching issue instead of creating a duplicate.
+Blank issues are disabled in the template chooser.
 
-- Add GitHub issue templates for bug reports and feature requests, with reproduction steps, version and environment
-  details where relevant. Ask users to review logs and diagnostic images for player information before sharing.
+Bug reports ask for the application version (shown on the Info tab), actual and expected behavior, and steps or
+context leading to the problem. Include the normal `user_data/logs/autopilot.log` from the affected run if available,
+even without Debug output. Save a copy before restarting, which rotates the previous log to a timestamped file.
+GitHub's text area supports file attachments as well as pasted excerpts; environment details and attachments remain
+optional. For recognition problems,
+the form links to the Debug-mode instructions below; reproducing the issue or supplying diagnostic images is not
+a prerequisite for reporting it. Review all attachments for player information before posting them publicly.
+Feature requests ask for the underlying need and desired behavior; alternatives and extra context are optional.
 
 ## Follow-up items
 
