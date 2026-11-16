@@ -23,7 +23,7 @@ from core.constants import (
     FlagsSupercruise,
 )
 from core.logger import logger
-from core.types import ScTargetAlignReturn
+from core.types import EdapInterruptError, ScTargetAlignReturn
 
 # FSD alignment correction while charging (compass degrees / seconds)
 FSD_ALIGN_TOLERANCE = 1.5
@@ -51,6 +51,9 @@ NAV_ALIGN_LOST_READS = 4
 NAV_ALIGN_LOST_DELAY = 0.5
 NAV_ALIGN_MAX_REROLLS = 2
 NAV_ALIGN_REROLL_YAW = 30
+
+SUPERCRUISE_START_TIMEOUT = 30.0
+SUPERCRUISE_ENTRY_TIMEOUT = 60.0
 
 
 class FlightMixin:
@@ -1097,6 +1100,7 @@ class FlightMixin:
 
                     # Start SCO monitoring
                     self.start_sco_monitoring()
+                    self._wait_for_supercruise()
 
                     # Wait the configured time before continuing
                     self.ap_ckb("log", "Flying for configured FC departure time.")
@@ -1154,18 +1158,55 @@ class FlightMixin:
             # Start SCO monitoring
             self.start_sco_monitoring()
 
-            # Wait for SC
-            self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+            self._wait_for_supercruise()
 
             # Enable SCO. If SCO not fitted, this will do nothing.
             self.keys.send("UseBoostJuice")
 
             # Wait until out of orbit.
-            self.status.wait_for_flag_off(FlagsHasLatLong, timeout=60)
+            if not self.status.wait_for_flag_off(FlagsHasLatLong, timeout=60):
+                self._abort_departure("Could not confirm departure from orbital cruise. Assist stopped.")
 
             # Disable SCO. If SCO not fitted, this will do nothing.
             self.keys.send("UseBoostJuice")
             self.keys.send("SetSpeed50")
+
+    def _abort_departure(self, message):
+        self.stop_sco_monitoring()
+        self.keys.send("SetSpeedZero")
+        logger.warning(message)
+        self.notify_user(message)
+        raise EdapInterruptError(message)
+
+    def _wait_for_supercruise(self):
+        start = time.monotonic()
+        deadline = start + SUPERCRUISE_START_TIMEOUT
+        entry_started = False
+        while True:
+            ship = self.jn.ship_state()
+            if self.status.get_flag(FlagsSupercruise) and ship["status"] == "in_supercruise":
+                logger.debug("Supercruise entry confirmed after %.1fs.", time.monotonic() - start)
+                return
+            now = time.monotonic()
+            if not entry_started and (
+                ship["status"] == "starting_supercruise"
+                or self.status.get_flag(FlagsFsdCharging)
+                or self.status.get_flag(FlagsFsdJump)
+            ):
+                entry_started = True
+                deadline = now + SUPERCRUISE_ENTRY_TIMEOUT
+                logger.debug(
+                    "Supercruise FSD start detected; waiting up to %.0fs for entry.", SUPERCRUISE_ENTRY_TIMEOUT
+                )
+            if now >= deadline:
+                logger.debug(
+                    "Supercruise confirmation timed out: elapsed=%.1fs, entry_started=%s, journal_status=%s.",
+                    now - start,
+                    entry_started,
+                    ship["status"],
+                )
+                self._abort_departure("Could not confirm supercruise entry. Assist stopped.")
+            sleep(0.25)
 
     def sc_engage(self):
         """Engages supercruise, then returns us to 50% speed"""
@@ -1174,6 +1215,6 @@ class FlightMixin:
         self.keys.send("Supercruise", hold=0.001)
         # Start SCO monitoring
         self.start_sco_monitoring()
-        sleep(12)
+        self._wait_for_supercruise()
 
         self.keys.send("SetSpeed50")

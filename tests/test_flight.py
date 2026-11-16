@@ -3,8 +3,15 @@
 import unittest
 from unittest.mock import Mock, call, patch
 
-from core.constants import FlagsFsdCharging, FlagsFsdJump
-from core.types import ScTargetAlignReturn
+from core.constants import (
+    FlagsDocked,
+    FlagsFsdCharging,
+    FlagsFsdJump,
+    FlagsHasLatLong,
+    FlagsLanded,
+    FlagsSupercruise,
+)
+from core.types import EdapInterruptError, ScTargetAlignReturn
 from routines.flight import FlightMixin
 
 
@@ -14,6 +21,224 @@ class Keys:
 
     def send(self, key):
         self.sent.append(key)
+
+
+class SupercruiseEntryTestCase(unittest.TestCase):
+    def flight(self):
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise", "cur_station_type": ""}
+        flight.set_ap_status = Mock()
+        flight.start_sco_monitoring = Mock()
+        flight.stop_sco_monitoring = Mock()
+        flight.notify_user = Mock()
+        flight.pitch_up = Mock()
+        return flight
+
+    def test_engage_waits_for_both_status_and_journal_before_reducing_throttle(self):
+        for delayed_source in ("status", "journal"):
+            with self.subTest(delayed_source=delayed_source):
+                flight = self.flight()
+                if delayed_source == "status":
+                    readings = iter([False, True])
+                    flight.status.get_flag.side_effect = lambda flag: (
+                        next(readings) if flag == FlagsSupercruise else False
+                    )
+                else:
+                    flight.jn.ship_state.side_effect = [
+                        {"status": "starting_supercruise"},
+                        {"status": "in_supercruise"},
+                    ]
+
+                def waiting(_):
+                    self.assertNotIn(call("SetSpeed50"), flight.keys.send.call_args_list)
+
+                with patch("routines.flight.sleep", side_effect=waiting) as sleep:
+                    flight.sc_engage()
+                sleep.assert_called_once_with(0.25)
+                self.assertEqual(
+                    flight.keys.send.call_args_list,
+                    [call("SetSpeed100"), call("Supercruise", hold=0.001), call("SetSpeed50")],
+                )
+                flight.notify_user.assert_not_called()
+
+    def test_engage_timeout_stops_instead_of_returning_to_later_flight(self):
+        for flag, journal_status in (
+            (False, "in_space"),
+            (False, "in_supercruise"),
+            (True, "starting_supercruise"),
+        ):
+            with self.subTest(flag=flag, journal_status=journal_status):
+                flight = self.flight()
+                flight.status.get_flag.side_effect = None
+                flight.status.get_flag.return_value = flag
+                flight.jn.ship_state.return_value["status"] = journal_status
+                with (
+                    patch(
+                        "routines.flight.time.monotonic",
+                        side_effect=[0, 0, 60 if journal_status == "starting_supercruise" else 30],
+                    ),
+                    patch("routines.flight.sleep"),
+                    self.assertLogs("ed_log", level="WARNING"),
+                    self.assertRaisesRegex(EdapInterruptError, "supercruise entry"),
+                ):
+                    flight.sc_engage()
+                self.assertEqual(
+                    flight.keys.send.call_args_list,
+                    [call("SetSpeed100"), call("Supercruise", hold=0.001), call("SetSpeedZero")],
+                )
+                flight.stop_sco_monitoring.assert_called_once_with()
+                flight.notify_user.assert_called_once()
+
+    def planetary_flight(self):
+        flight = self.flight()
+        flight.status.get_flag.side_effect = lambda flag: (
+            flag
+            in (
+                FlagsHasLatLong,
+                FlagsLanded,
+                FlagsSupercruise,
+            )
+        )
+        flight.status.wait_for_flag_off.return_value = True
+        return flight
+
+    def test_planetary_departure_does_not_enable_sco_when_entry_times_out(self):
+        flight = self.planetary_flight()
+        flight.jn.ship_state.return_value["status"] = "starting_supercruise"
+        with (
+            patch("routines.flight.time.monotonic", side_effect=[0, 0, 60]),
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(EdapInterruptError, "supercruise entry"),
+        ):
+            flight.waypoint_undock_seq()
+        self.assertNotIn(call("UseBoostJuice"), flight.keys.send.call_args_list)
+        self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeedZero"))
+        self.assertNotIn(call(FlagsHasLatLong, timeout=60), flight.status.wait_for_flag_off.call_args_list)
+
+    def test_orbit_timeout_sends_only_safety_stop_after_wait(self):
+        flight = self.planetary_flight()
+
+        def wait(flag, timeout):
+            if flag == FlagsHasLatLong:
+                flight.keys.send.reset_mock()
+                return False
+            return True
+
+        flight.status.wait_for_flag_off.side_effect = wait
+        with (
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(EdapInterruptError, "orbital cruise"),
+        ):
+            flight.waypoint_undock_seq()
+        flight.keys.send.assert_called_once_with("SetSpeedZero")
+        flight.stop_sco_monitoring.assert_called_once_with()
+        flight.notify_user.assert_called_once()
+
+    def test_confirmed_planetary_departure_preserves_sco_sequence(self):
+        flight = self.planetary_flight()
+        with patch("routines.flight.sleep"):
+            flight.waypoint_undock_seq()
+        self.assertEqual(
+            flight.keys.send.call_args_list[-3:],
+            [call("UseBoostJuice"), call("UseBoostJuice"), call("SetSpeed50")],
+        )
+        flight.status.wait_for_flag_off.assert_any_call(FlagsHasLatLong, timeout=60)
+        flight.notify_user.assert_not_called()
+
+    def test_carrier_departure_confirms_entry_before_configured_flight(self):
+        for entered in (True, False):
+            with self.subTest(entered=entered):
+                flight = self.flight()
+                ship = flight.jn.ship_state.return_value
+                ship.update(status="in_space", cur_station_type="FleetCarrier", has_adv_dock_comp=True)
+                docked = True
+
+                def undock():
+                    nonlocal docked
+                    docked = False
+
+                def flag_set(flag):
+                    return docked if flag == FlagsDocked else entered and flag == FlagsSupercruise
+
+                def send(binding):
+                    if binding == "Supercruise" and entered:
+                        ship["status"] = "in_supercruise"
+
+                flight.undock = Mock(side_effect=undock)
+                flight.status.get_flag.side_effect = flag_set
+                flight.keys.send.side_effect = send
+                flight.config = {"FCDepartureTime": 17}
+                flight.ap_ckb = Mock()
+                with patch("routines.flight.sleep") as sleep:
+                    if entered:
+                        flight.waypoint_undock_seq()
+                        sleep.assert_called_once_with(17)
+                        self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeed50"))
+                    else:
+                        with (
+                            patch("routines.flight.time.monotonic", side_effect=[0, 0, 30]),
+                            self.assertLogs("ed_log", level="WARNING"),
+                            self.assertRaisesRegex(EdapInterruptError, "supercruise entry"),
+                        ):
+                            flight.waypoint_undock_seq()
+                        self.assertNotIn(call(17), sleep.call_args_list)
+                        self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeedZero"))
+                        flight.ap_ckb.assert_called_once_with("log+vce", "Maneuvering")
+
+    def test_stop_interrupt_is_not_swallowed_while_waiting(self):
+        flight = self.flight()
+        flight.jn.ship_state.return_value["status"] = "starting_supercruise"
+        with (
+            patch("routines.flight.sleep", side_effect=EdapInterruptError),
+            self.assertRaises(EdapInterruptError),
+        ):
+            flight.sc_engage()
+        self.assertNotIn(call("SetSpeed50"), flight.keys.send.call_args_list)
+        flight.notify_user.assert_not_called()
+
+    def test_slow_entry_gets_separate_time_after_fsd_start(self):
+        flight = self.flight()
+        elapsed = 0.0
+
+        def ship_state():
+            return {
+                "status": "in_space" if elapsed < 5 else "starting_supercruise" if elapsed < 35 else "in_supercruise"
+            }
+
+        def waiting(_):
+            nonlocal elapsed
+            self.assertNotIn(call("SetSpeed50"), flight.keys.send.call_args_list)
+            elapsed += 1
+
+        flight.jn.ship_state.side_effect = ship_state
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise and elapsed >= 35
+        with (
+            patch("routines.flight.time.monotonic", side_effect=lambda: elapsed),
+            patch("routines.flight.sleep", side_effect=waiting),
+        ):
+            flight.sc_engage()
+        self.assertEqual(elapsed, 35)
+        flight.notify_user.assert_not_called()
+        self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeed50"))
+
+    def test_repeated_charging_does_not_extend_entry_deadline(self):
+        flight = self.flight()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsFsdCharging
+        flight.jn.ship_state.return_value["status"] = "in_space"
+        with (
+            patch("routines.flight.time.monotonic", side_effect=[0, 29, 59, 89]),
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaises(EdapInterruptError),
+        ):
+            flight.sc_engage()
+        self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeedZero"))
 
 
 class TargetAlignment(FlightMixin):
