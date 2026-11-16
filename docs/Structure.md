@@ -165,6 +165,8 @@ Elite Dangerous running; these tests send input to the game. Unit tests isolate 
 - Add user-visible changes to the `Unreleased` section of `CHANGELOG.md`.
 - When preparing a release, keep an empty `Unreleased` section above the dated version section. The release
   workflow publishes only that version's notes, excluding other releases and the legacy changelog history.
+- GitHub release titles use only the version tag, for example `v2.0.0`. Source ZIP filenames retain the project
+  name, for example `EDFlightControl-2.0.0.zip`.
 
 ## Documentation screenshots
 

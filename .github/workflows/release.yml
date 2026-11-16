@@ -85,5 +85,5 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" "EDFlightControl-${version}.zip" \
-            --title "ED Flight Control ${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
             --notes-file release-notes.md
