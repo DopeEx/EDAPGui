@@ -7,8 +7,10 @@ import requests
 from core.logger import logger
 from core.version import __version__
 
-LATEST_RELEASE_API = "https://api.github.com/repos/DopeEx/EDAPGui/releases/latest"
-LATEST_RELEASE_PAGE = "https://github.com/DopeEx/EDAPGui/releases/latest"
+REPOSITORY = "DopeEx/EDAPGui"
+REPOSITORY_URL = f"https://github.com/{REPOSITORY}"
+LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+LATEST_RELEASE_PAGE = f"{REPOSITORY_URL}/releases/latest"
 
 
 def parse_version(text: str) -> tuple[int, int, int] | None:

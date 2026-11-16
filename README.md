@@ -84,6 +84,12 @@ and run `install_requirements.bat`.
 - [Project structure and development conventions](docs/Structure.md)
 - [Changelog](CHANGELOG.md)
 
+## Bug reports and feature requests
+
+Use this repository's [GitHub issue tracker](https://github.com/DopeEx/EDAPGui/issues) for bug reports and feature
+requests, or select **Info > Report a bug** in the application. Include reproduction steps and your application
+version; review logs and diagnostic images for player information before sharing.
+
 ## Development
 
 Install the runtime requirements and development tools in the active environment:
