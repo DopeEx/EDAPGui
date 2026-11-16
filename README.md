@@ -1,7 +1,7 @@
-[![CI](https://github.com/DopeEx/EDAPGui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DopeEx/EDAPGui/actions/workflows/ci.yml)
+[![CI](https://github.com/DopeEx/EDFlightControl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DopeEx/EDFlightControl/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDopeEx%2FEDAPGui%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.checks.strategy.matrix%5B%27python-version%27%5D&label=python&color=blue)](.github/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/DopeEx/EDAPGui)](LICENSE)
+[![Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDopeEx%2FEDFlightControl%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.checks.strategy.matrix%5B%27python-version%27%5D&label=python&color=blue)](.github/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/DopeEx/EDFlightControl)](LICENSE)
 
 # ED Flight Control
 
@@ -86,7 +86,7 @@ and run `install_requirements.bat`.
 
 ## Bug reports and feature requests
 
-Use this repository's [GitHub issue tracker](https://github.com/DopeEx/EDAPGui/issues) for bug reports and feature
+Use this repository's [GitHub issue tracker](https://github.com/DopeEx/EDFlightControl/issues) for bug reports and feature
 requests, or select **Info > Report a bug** in the application. Include reproduction steps and your application
 version; review logs and diagnostic images for player information before sharing.
 

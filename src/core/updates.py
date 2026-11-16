@@ -7,7 +7,7 @@ import requests
 from core.logger import logger
 from core.version import __version__
 
-REPOSITORY = "DopeEx/EDAPGui"
+REPOSITORY = "DopeEx/EDFlightControl"
 REPOSITORY_URL = f"https://github.com/{REPOSITORY}"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 LATEST_RELEASE_PAGE = f"{REPOSITORY_URL}/releases/latest"
