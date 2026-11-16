@@ -312,6 +312,18 @@ an exact name match and confirmation from game state.
     Bind the reset action manually or add it with `fix_keybinds.bat`. SYS power supplies the systems capacitor;
     actual shield regeneration also depends on the shield and its current state.
 
+## Issue reporting
+
+The README directs bug reports and feature requests to the repository's GitHub issue tracker.
+**Info > Report a bug** opens GitHub's issue submission/template chooser page in the browser; it does not
+automatically attach logs, images or other local files. The existing **Open GitHub Page** button opens the repository
+homepage.
+
+Remaining tasks:
+
+- Add GitHub issue templates for bug reports and feature requests, with reproduction steps, version and environment
+  details where relevant. Ask users to review logs and diagnostic images for player information before sharing.
+
 ## Follow-up items
 
 These are deferred improvements for future consideration.

@@ -747,7 +747,10 @@ class APGui:
     # info and updates
 
     def about(self):
-        webbrowser.open_new("https://github.com/DopeEx/EDAPGui")
+        webbrowser.open_new(updates.REPOSITORY_URL)
+
+    def report_bug(self):
+        webbrowser.open_new(f"{updates.REPOSITORY_URL}/issues/new/choose")
 
     def check_updates(self, manual=True):
         """Look for a newer release in the background. The result is shown on the Info tab."""
@@ -785,7 +788,7 @@ class APGui:
         webbrowser.open_new(updates.LATEST_RELEASE_PAGE)
 
     def open_changelog(self):
-        webbrowser.open_new("https://github.com/DopeEx/EDAPGui/blob/main/CHANGELOG.md")
+        webbrowser.open_new(f"{updates.REPOSITORY_URL}/blob/main/CHANGELOG.md")
 
     def open_logfile(self):
         os.startfile(paths.LOG_FILE)

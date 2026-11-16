@@ -226,6 +226,7 @@ class StatisticsIntegrationTests(unittest.TestCase):
             update_text=tk.StringVar(root, value="Not checked yet."),
             about=Mock(),
             open_changelog=Mock(),
+            report_bug=Mock(),
             check_updates=Mock(),
             open_download=Mock(),
             refresh_update_button=Mock(),

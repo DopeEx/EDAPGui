@@ -981,6 +981,35 @@ class EditorWidgetsTestCase(unittest.TestCase):
             self.assertEqual(self.editor.document.filename, target)
             self.assertTrue(progress.exists())
 
+    def test_info_report_bug_opens_issue_submission_for_configured_repository(self):
+        self.editor.destroy()
+        ap = make_ap()
+        ap.waypoint = self.runtime
+        ap.waypoint_assist_enabled = False
+        with mock.patch("gui.main_window.window_state.load", return_value=dict(DEFAULTS)):
+            window = APGui(self.root, ed_ap=ap, services=False)
+        window.tabs.select(window.tabs.tabs()[-1])
+        self.root.deiconify()
+        self.root.update()
+
+        def find_buttons(parent):
+            for child in parent.winfo_children():
+                if isinstance(child, RoundButton) and child.caption == "Report a bug":
+                    yield child
+                yield from find_buttons(child)
+
+        buttons = list(find_buttons(window.root))
+        self.assertEqual(len(buttons), 1)
+        self.assertTrue(buttons[0].winfo_ismapped())
+        for repository in ("https://github.com/DopeEx/EDAPGui", "https://github.com/DopeEx/EDFlightControl"):
+            with (
+                self.subTest(repository=repository),
+                mock.patch("gui.main_window.updates.REPOSITORY_URL", repository),
+                mock.patch("gui.main_window.webbrowser.open_new") as open_browser,
+            ):
+                buttons[0].invoke()
+                open_browser.assert_called_once_with(f"{repository}/issues/new/choose")
+
     def test_full_main_window_build_and_rebuild_keep_route_edits(self):
         self.editor.destroy()
         ap = make_ap()
