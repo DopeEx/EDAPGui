@@ -100,6 +100,7 @@ EDFlightControl/
 |-- tools/
 |   |-- make_keybind_defaults.py    # Generate game keybinding defaults
 |   |-- make_templates.py           # Generate templates from local screenshots
+|   |-- capture_docs.py             # Capture documentation GUI scenes with isolated example data
 |   `-- release_notes.py            # Extract one dated release's changelog notes
 |-- tests/
 |   |-- helpers.py                  # Shared test helpers
@@ -164,6 +165,33 @@ Elite Dangerous running; these tests send input to the game. Unit tests isolate 
 - Add user-visible changes to the `Unreleased` section of `CHANGELOG.md`.
 - When preparing a release, keep an empty `Unreleased` section above the dated version section. The release
   workflow publishes only that version's notes, excluding other releases and the legacy changelog history.
+
+## Documentation screenshots
+
+On Windows, with the full runtime requirements installed, run from the project root:
+
+```powershell
+venv\Scripts\python.exe tools\capture_docs.py
+```
+
+The tool generates all ten images in `docs/screenshots/` using real GUI widgets, dummy services and temporary
+example routes. It does not start the autopilot engine, register hotkeys, check for updates, or load personal
+configuration, route progress or statistics. Technical logs go to a temporary directory. The existing shared OCR
+model cache is retained; no OCR is run. The status-overlay example uses the application's actual image renderer
+over a reproducible synthetic starfield to illustrate panel transparency.
+
+Window captures use MSS and DWM's visible frame bounds to retain the actual Windows title bar, border and rounded
+corners, with a 12-pixel outer margin. A neutral backdrop keeps other desktop content out of the corners and margin.
+Invisible resize borders are excluded; the visible frame is never cropped to the client area or reconstructed.
+Keep the preview stationary and unobscured, with its margin entirely on one monitor. Overlapping windows, movement,
+off-screen areas, incomplete captures and blank images fail explicitly. All scenes are generated in a temporary
+directory before existing documentation images are replaced. Review the resulting images before committing them.
+
+Use `--output-dir <folder>` to review a separate output set, or `--preview` to open the isolated GUI and use its
+tool-only **Capture documentation images** menu. The tool does not force foreground focus or synthesize keyboard input.
+The preview closes after capture.
+An interactive Windows desktop is required for native window capture. These are documentation examples, not private
+game-screen regression fixtures.
 
 ## Commit and branch naming
 

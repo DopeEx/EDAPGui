@@ -110,6 +110,9 @@ python -m unittest discover -s tests -t .
 
 The OCR test requires the full runtime dependencies; it is skipped in CI's slim environment.
 
+To refresh the documentation images with isolated example data, see
+[Documentation screenshots](docs/Structure.md#documentation-screenshots).
+
 ## Screenshots
 
 Ship tab:
