@@ -47,7 +47,8 @@ A very wide field of view can also make target detection less reliable.
 
 ## Install and start
 
-1. Download and extract the repository ZIP, or clone the repository.
+1. Download and extract the source ZIP from [Releases](https://github.com/DopeEx/EDFlightControl/releases)
+   (listed by version, for example `v2.0.0`), or clone the repository.
 2. Run `start_edfc.bat`. On first start it creates a private `venv` folder, installs the requirements, and launches
    ED Flight Control. Python 3.13 is selected when available; otherwise the installer uses Python 3.12.
 3. Start Elite Dangerous and make sure the required keybindings are available. `fix_keybinds.bat` can fill missing
