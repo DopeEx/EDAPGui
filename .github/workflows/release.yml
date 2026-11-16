@@ -66,14 +66,7 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '
-            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
-            found { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            echo "No section '## [${version}]' found in CHANGELOG.md."
-            exit 1
-          fi
+          python tools/release_notes.py "$version" > release-notes.md
           {
             echo
             echo "Full changelog: https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md"

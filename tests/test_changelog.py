@@ -7,6 +7,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tools.release_notes import extract_release_notes
+
 from core.version import __version__
 
 CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
@@ -60,6 +62,29 @@ class ChangelogTestCase(unittest.TestCase):
             any(heading.startswith(f"{__version__}] - ") for heading in headings),
             f"no dated changelog section for version {__version__}",
         )
+
+    def test_release_notes_exclude_other_versions_and_historical_entries(self):
+        release = f"## [{__version__}] - 2026-11-16\n"
+        notes = "\n### Added\n\n- Current release feature.\n\n"
+        for following in (
+            "# 8/19/2025 v1.7.0: General updates.\n - Historical entry.\n",
+            "## [1.0.0] - 2025-01-01\n\n### Added\n\n- Older release feature.\n",
+            "",
+        ):
+            with self.subTest(following=following.splitlines()[0] if following else "end of file"):
+                text = "## [Unreleased]\n\n### Added\n\n- Future feature.\n\n" + release + notes + following
+                self.assertEqual(extract_release_notes(text, __version__), notes.strip())
+
+    def test_release_notes_reject_missing_empty_or_undated_sections(self):
+        for text in (
+            "## [Unreleased]\n\n### Added\n\n- Future feature.\n",
+            f"## [{__version__}] - 2026-11-16\n\n# Historical release\n - Old feature.\n",
+            f"## [{__version__}]\n\n### Added\n\n- Undated feature.\n",
+            f"## [{__version__}1] - 2026-11-16\n\n### Added\n\n- Different version.\n",
+        ):
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(ValueError, "No non-empty dated changelog section"):
+                    extract_release_notes(text, __version__)
 
 
 if __name__ == "__main__":
