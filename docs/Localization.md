@@ -12,7 +12,7 @@ default commodity-name language, not the GUI language.
   language header ends the wait immediately; no journal, a missing language, or an unsupported language still
   produces a warning. A header arriving after the timeout is picked up on a later check.
 - A named language overrides journal detection.
-- If the journal language cannot be determined or its pack is not installed, ED Flight Control warns and attempts English.
+- If the journal language cannot be determined or its pack is not installed, EDFC warns and attempts English.
   This does not make English text match a different game language. Switch the game to a supported language if
   recognition fails.
 - A pack with an unsupported OCR language also falls back to English with a warning. A model initialization or
@@ -51,7 +51,7 @@ strings emitted by the game journal; aliases must not overlap another pack. The 
 by the project's pinned PaddleOCR version. It need not equal the folder name. A different OCR model may require
 a download on first use; ordinary text recognition runs locally.
 Models and PaddleX cache files live in `user_data/cache/paddlex/`, independent of the working directory and virtual
-environment. ED Flight Control sets `PADDLE_PDX_CACHE_HOME` to this project-local directory before importing PaddleOCR,
+environment. EDFC sets `PADDLE_PDX_CACHE_HOME` to this project-local directory before importing PaddleOCR,
 overriding an inherited value. Application runs and OCR tests use the same cache. Recreating the virtual environment
 does not remove it. Existing caches in the user's `.paddlex` folder remain untouched; models are downloaded again
 when missing from the project cache.
@@ -104,19 +104,33 @@ from any installed pack; route identity itself is language-independent.
 
 ## Validation before contributing
 
-Check the full game workflows affected by a pack, including navigation tabs, internal inventory tabs, station
-services, jump alignment, disengagement and buy/sell dialogs. Text length can affect capture regions; market
-sorting can differ by language. A syntactically valid pack is not a guarantee of correct OCR.
+Language contributions are welcome with the monitor and resolution available to you.
+The default orange HUD is sufficient; testing custom HUD colors, other resolutions or SDR/HDR combinations is
+optional, not a condition for contributing.
 
-Test at 1080p SDR and 2160p HDR, with the default orange HUD and a custom HUD scheme. Include negative cases:
-wrong commodity, wrong buy/sell direction, unrelated HUD messages and unreadable text must not confirm an action.
+Where possible, try the translated navigation and inventory tabs, station services, jump alignment, disengagement
+and buy/sell dialogs in the game. Note which workflows you tested, your resolution, and any known issues or untested
+areas in the pull request. Partial validation does not prevent submitting a translation.
+Text length can affect capture regions, and market sorting can differ by language; valid JSON alone does not
+guarantee correct OCR. Useful additional checks include ensuring that wrong commodities, wrong buy/sell directions,
+unrelated HUD messages and unreadable text do not confirm an action.
+
+For recognition problems, enable **Debug > Log level > Debug** before reproducing the issue. Detected failures
+automatically save diagnostic image crops in `user_data/debug/`, with details in `user_data/debug/debug.log`.
+Not every incorrect recognition can be detected automatically. Review images and logs for player information
+before sharing them; see [vision diagnostics](Workflows.md#vision-diagnostics) for details.
+
+### Automated checks
+
+The regular tests use repository fixtures and generated test data; you do not need the maintainer's private
+screenshots. Regressions that require local screenshots are skipped when those files are absent.
+Tests requiring PaddleOCR are also skipped when it is not installed, as in the slim PR CI environment.
+Run the checks listed in the README's [development section](../README.md#development).
+
+### Optional local screenshot fixtures
+
 Keep raw screenshots local; do not attach full-screen captures containing player information to public issues or PRs.
 For local fixtures, include an `hdr` or `sdr` filename token only when the capture mode is known. Missing tokens mean
 unknown, not SDR; resolution and HUD colors do not establish the capture mode.
 Full screenshots belong in `tests/fixtures/screenshots/<height>p/`. Saved diagnostic crops belong in
 `tests/fixtures/screenshots/diagnostics/`, separate from full-screen regressions; preserve their timestamped filenames.
-Right-panel recognition checks only the unique filled tab highlight, not neighboring tab labels. Home and playlist
-use their icon positions; text tabs still require an exact active-language match. The inventory tab must be
-confirmed before carrier-transfer inputs are sent.
-German uses `LAGERHALLEN` for the storage tab. Local screenshot regressions cover all eight right-panel tabs in
-English and German with both HUD color schemes, including dense dark lettering on the orange highlight.

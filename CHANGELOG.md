@@ -11,13 +11,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Import existing waypoint routes through **Import... > Legacy JSON...** and save them in the new format before running them. The import retains destinations and trade lists, not bookmarks, other options or progress; review the draft before saving.
 - Runtime files moved to the new `user_data/` folder. Existing users must manually copy `configs/AP.json`, `configs/ship_configs.json` and their own waypoint files from `waypoints/` into `user_data/configs/` and `user_data/waypoints/`.
 - Dependencies and the OCR engine have been updated. Existing installations must remove the old `venv` folder and run `install_requirements.bat` to avoid incompatible leftover packages. Starting the program does not update packages automatically; manually managed environments must install `requirements.txt`.
-- Python 3.12 and 3.13 are supported, with 3.13 recommended. Python 3.14 and newer are not supported because PaddlePaddle does not provide compatible Windows wheels.
+- Python 3.12 and 3.13 (64-bit) are supported, with 3.13 recommended. Other Python versions are not supported by the installer.
 
 ### Added
 
 - Recognition, landing-pad sizes and default supercruise turn rates for Anaconda Mk II, Caspian Explorer, Lynx Highliner and Kestrel Mk II.
 - Integrated Waypoints editor for creating, loading, saving, editing, duplicating, reordering and enabling destinations, with validation, unsaved-change protection and editing locks during execution.
-- Trade-list editing with configurable commodity priority and an All quantity choice, plus a searchable catalogue of 411 commodities. Routes identify goods by ID, independently of display language; missing translations display in English and unverified names are marked.
+- Trade-list editing with configurable commodity priority and a searchable catalogue of 411 commodities. Suggestions open when the field is clicked and narrow as you type. Quantity controls offer numeric entry and All, with a clearly labelled carrier/construction All cargo action in the Sell / transfer list. Routes identify goods by ID, independently of display language; missing translations display in English and unverified names are marked.
 - Game language selection in Settings: Auto follows journal headers, including after a game restart, or a language can be selected explicitly. English and German are included; recognition and commodity translations can be contributed as data-only language folders. Missing language support warns and attempts English; the GUI remains English.
 - Trade-route import from copied German/English text and Spansh planner exports (Galaxy Plotter and exploration CSV/JSON; Trade Planner JSON), with a preview and a choice to create a route or append to one. Trade imports retain planned quantities, report omitted unknown goods, and create an editable draft without modifying the source file. Legacy JSON import creates a new draft without modifying the original.
 - Plot to System and Plot to Station buttons for selecting targets without flying, trading or changing route progress.
@@ -37,8 +37,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Focusing Elite Dangerous before each key or group of keys is now enabled by default. Existing saved settings are preserved.
 - Removed the undocumented Navigation-panel system-bookmark type; legacy routes with a named station fall back to station-name selection.
 - Renamed DSS Assist to **Honk Assist** and use **Discovery Scanner Assist** in status, settings and documentation; existing fire-button settings migrate automatically.
-- Commodity suggestions now open when the search field is clicked and narrow as you type.
-- The Sell / transfer commodity suggestions now include the clearly labelled carrier/construction **All cargo** action. Quantity selection also offers a direct switch back to numeric entry.
 - Waypoint routes now keep completion and remaining trade quantities separate from their definitions. Reset and route-level repetition restore the original quantities; the last selected route is remembered. The assist stops if progress cannot be saved.
 - Fleet Carrier inventory transfers support full-cargo deposits only; ID-specific deposits and withdrawals are not supported. Ordinary Fleet Carrier market purchases and sales remain available.
 - Waypoint navigation tries configured Galaxy Map bookmarks first, falls back to system-name search and reuses a matching station target after arrival.
@@ -57,9 +55,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Discovery Scanner Assist now waits for Analysis Mode, records only journal-confirmed scans as complete, and reports unexpected errors without terminating the autopilot engine.
-- Sidebar drag handling no longer logs callback errors when pointer movement arrives without an active drag.
 - Stopping an assist during engine polling no longer crashes the autopilot or prevents later stop requests.
-
 - Galaxy Map targeting no longer waits indefinitely when a route cannot be confirmed; it retries a limited number of times and then stops.
 - Waypoint market trades no longer submit a neighbouring commodity or assume success from key presses alone. The trade dialog is checked before submission, and only game-confirmed transactions reduce remaining quantities; unreadable dialogs receive one checked recovery attempt.
 - Waypoint trading confirms the active buy or sell list before selecting a commodity, with one controlled market reopening if the direction cannot be verified.
