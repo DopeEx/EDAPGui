@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-16
+
 ### Important notice
 
 - Import existing waypoint routes through **Import... > Legacy JSON...** and save them in the new format before running them. The import retains destinations and trade lists, not bookmarks, other options or progress; review the draft before saving.
