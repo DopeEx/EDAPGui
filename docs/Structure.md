@@ -99,7 +99,8 @@ EDFlightControl/
 |   `-- cache/paddlex/              # Downloaded OCR models and PaddleX cache (not versioned)
 |-- tools/
 |   |-- make_keybind_defaults.py    # Generate game keybinding defaults
-|   `-- make_templates.py           # Generate templates from local screenshots
+|   |-- make_templates.py           # Generate templates from local screenshots
+|   `-- release_notes.py            # Extract one dated release's changelog notes
 |-- tests/
 |   |-- helpers.py                  # Shared test helpers
 |   |-- test_changelog.py           # Changelog format tests
@@ -161,6 +162,8 @@ Elite Dangerous running; these tests send input to the game. Unit tests isolate 
 - Check GUI layout at 100%, 125% and 150% scaling, not only the current monitor's scaling.
 - Use lowercase `snake_case` for new Python modules and folders; avoid wildcard imports.
 - Add user-visible changes to the `Unreleased` section of `CHANGELOG.md`.
+- When preparing a release, keep an empty `Unreleased` section above the dated version section. The release
+  workflow publishes only that version's notes, excluding other releases and the legacy changelog history.
 
 ## Commit and branch naming
 
