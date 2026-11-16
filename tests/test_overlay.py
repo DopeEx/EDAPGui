@@ -1062,6 +1062,7 @@ class OverlayRenderingTests(unittest.TestCase):
                         patch("core.autopilot.set_focus_elite_window"),
                         patch("core.autopilot.cv2.waitKey"),
                         patch("core.autopilot.sleep", side_effect=stop_loop),
+                        self.assertNoLogs("ed_log", level="ERROR"),
                     ):
                         autopilot.engine_loop()
 

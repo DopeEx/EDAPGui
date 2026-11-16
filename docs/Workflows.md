@@ -37,6 +37,16 @@ This document summarizes the behavior currently implemented and lists a small nu
 7. Once docked, the docking sequence selects refuel, repair, and ammunition services. The local-target phase does not
    run a waypoint trade sequence.
 
+Supercruise entry requested by `sc_engage()` or during a planetary/Fleet Carrier departure must be confirmed by
+both Status.json and the journal's `in_supercruise` state before subsequent flight steps.
+The FSD has up to 30 seconds to start charging/jumping; after the first start indication, entry has a separate
+60-second deadline that is not extended by repeated charging indications.
+Planetary departure additionally waits up to 60 seconds for the latitude/longitude flag to clear, indicating that
+the ship has left the surface/orbital-cruise HUD region. A timeout stops the assist with a user message and zero
+throttle instead of continuing with alignment, SCO toggles or the configured carrier departure flight.
+Zero throttle in supercruise does not bring the ship to a standstill. These checks also apply to Waypoint Assist;
+they are departure checks, not collision avoidance during travel.
+
 ### Waypoint Assist
 
 1. Loads the route selected in the Waypoints tab and visits its stops in order, skipping inactive and completed stops.
@@ -284,6 +294,10 @@ an exact name match and confirmation from game state.
 
 These are deferred improvements for future consideration.
 
+- Design planetary-approach protection during travel, including compass-only alignment. Evaluate journal
+  `ApproachBody`/`LeaveBody` events and Status.json altitude trends to detect hazardous approaches without rejecting
+  legitimate travel to planetary destinations. Define when to reduce throttle or stop with a warning; add automatic
+  avoidance only once a reliable direction away from the planet and suitable in-game validation are available.
 - Assess HUD distance OCR for feedback-controlled station approaches instead of timed forward flight. Deferred
   until its reliability across resolutions, HUD colors and languages has been evaluated; not used by current approaches.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
@@ -292,8 +306,6 @@ These are deferred improvements for future consideration.
   are too unpredictable for routine testing: they may not occur for days, then happen several times within an hour.
 - Verify the screen-capture channel order and simplify the related color conversions only if vision regression tests
   confirm the expected colors in both captured-screen and supplied-image modes.
-- Confirm supercruise entry in `sc_engage()` and handle failure to leave orbit after the bounded wait without
-  continuing with later flight inputs.
 - Assess explicit state confirmation for Orbital Construction Services instead of relying on a fixed menu-render delay.
 - Review waypoint arrival matching for Orbital Construction Sites; an older candidate name match was commented out, so confirm the intended journal name and current route behavior before adding support.
 - Assess handling of Thargoid shutdown during hyperspace only when its trigger and recovery can be validated safely.

@@ -75,6 +75,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Conflicting weak compass readings trigger a retry instead of steering in an uncertain direction, while clearly hollow markers remain usable despite a weak filled-template vote.
 - Supercruise disengage detection continues when the target ring is lost or becomes an open arc near arrival.
 - Interdiction recovery waits for confirmed supercruise before realigning, avoiding assist aborts during the jump transition; an unconfirmed return stops with an error after a bounded wait.
+- Supercruise entry and departure from the orbital-cruise region must be confirmed before subsequent flight steps; a timeout stops the assist with zero throttle and a message instead of continuing blindly.
 - Discovery scans no longer end after a fixed delay or get cut short by another action sharing the same key.
 - Starting in open space no longer fails because station details are missing.
 - Screen capture and target detection now work correctly across monitors with different Windows scaling.
