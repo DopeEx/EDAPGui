@@ -39,8 +39,15 @@ class LatestReleaseTestCase(unittest.TestCase):
         return response
 
     def test_returns_the_tag(self):
-        with mock.patch.object(updates.requests, "get", return_value=self.response(200, {"tag_name": "v1.8.0"})):
+        with mock.patch.object(
+            updates.requests, "get", return_value=self.response(200, {"tag_name": "v1.8.0"})
+        ) as get_release:
             self.assertEqual(updates.get_latest_release(), "v1.8.0")
+        get_release.assert_called_once_with(
+            "https://api.github.com/repos/DopeEx/EDFlightControl/releases/latest",
+            timeout=5.0,
+            headers={"Accept": "application/vnd.github+json"},
+        )
 
     def test_no_release_published(self):
         with mock.patch.object(updates.requests, "get", return_value=self.response(404)):

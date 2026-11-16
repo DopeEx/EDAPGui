@@ -1001,7 +1001,7 @@ class EditorWidgetsTestCase(unittest.TestCase):
         buttons = list(find_buttons(window.root))
         self.assertEqual(len(buttons), 1)
         self.assertTrue(buttons[0].winfo_ismapped())
-        for repository in ("https://github.com/DopeEx/EDAPGui", "https://github.com/DopeEx/EDFlightControl"):
+        for repository in ("https://github.com/example/project", "https://github.com/DopeEx/EDFlightControl"):
             with (
                 self.subTest(repository=repository),
                 mock.patch("gui.main_window.updates.REPOSITORY_URL", repository),
