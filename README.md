@@ -3,9 +3,9 @@
 [![Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDopeEx%2FEDAPGui%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.checks.strategy.matrix%5B%27python-version%27%5D&label=python&color=blue)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/DopeEx/EDAPGui)](LICENSE)
 
-# EDAPGui
+# ED Flight Control
 
-EDAPGui is a Windows autopilot for Elite Dangerous, offering optional assistance features.
+ED Flight Control (EDFC) is a third-party Windows flight-control and autopilot tool for Elite Dangerous, offering optional assistance features.
 
 ## What it can do
 
@@ -75,11 +75,11 @@ the currently focused window. A very wide field of view can also make target det
 ## Install and start
 
 1. Download and extract the repository ZIP, or clone the repository.
-2. Run `start_ed_ap.bat`. On first start it creates a private `venv` folder, installs the requirements, and launches
-   EDAPGui. Python 3.13 is selected when available; otherwise the installer uses Python 3.12.
+2. Run `start_edfc.bat`. On first start it creates a private `venv` folder, installs the requirements, and launches
+   ED Flight Control. Python 3.13 is selected when available; otherwise the installer uses Python 3.12.
 3. Start Elite Dangerous and make sure the required keybindings are available. See the
    [keybindings guide](docs/Keybindings.md); `fix_keybinds.bat` can fill missing bindings in a custom preset.
-4. In EDAPGui, set the roll, pitch, and yaw rates for the active ship. See the
+4. In ED Flight Control, set the roll, pitch, and yaw rates for the active ship. See the
    [ship tuning guide](docs/RollPitchYaw.md).
 5. Select an assist in the sidebar of the main window (only one assist runs at a time; **Stop All** safely stops it,
    including while the engine is waiting between actions). The
@@ -166,6 +166,12 @@ Info tab:
 Collapsed to the mode buttons:
 
 <img src="docs/screenshots/screen_cap_collapsed.png" alt="Collapsed sidebar" height="360">
+
+## License and origins
+
+ED Flight Control is developed from EDAPGui and builds on the original
+[EDAutopilot project by SKai2](https://github.com/skai2/EDAutopilot).
+It remains available under the [MIT license](LICENSE); the original copyright notice is preserved.
 
 ## Disclaimer
 

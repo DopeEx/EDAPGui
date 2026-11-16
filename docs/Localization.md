@@ -6,18 +6,18 @@ default commodity-name language, not the GUI language.
 ## Selection
 
 - **Auto** reads the `language` field in the latest game journal header. It checks again between assist runs, so
-  restarting Elite Dangerous in another language does not require restarting EDAPGui.
+  restarting Elite Dangerous in another language does not require restarting ED Flight Control.
   An empty or partially written new journal is allowed up to 15 seconds for its header before English fallback
   is reported. No assist starts and no OCR model is replaced during that wait. A complete record without a
   language header ends the wait immediately; no journal, a missing language, or an unsupported language still
   produces a warning. A header arriving after the timeout is picked up on a later check.
 - A named language overrides journal detection.
-- If the journal language cannot be determined or its pack is not installed, EDAPGui warns and attempts English.
+- If the journal language cannot be determined or its pack is not installed, ED Flight Control warns and attempts English.
   This does not make English text match a different game language. Switch the game to a supported language if
   recognition fails.
 - A pack with an unsupported OCR language also falls back to English with a warning. A model initialization or
   download failure is reported; assists do not run using a mismatched old model. Change the selection or restart
-  EDAPGui after resolving that failure.
+  ED Flight Control after resolving that failure.
 - Changes are applied between assists, never by replacing an OCR engine during an input sequence. Repeated OCR
   reads, timeouts, dialog confirmation and transaction verification remain in place.
 
@@ -51,7 +51,7 @@ strings emitted by the game journal; aliases must not overlap another pack. The 
 by the project's pinned PaddleOCR version. It need not equal the folder name. A different OCR model may require
 a download on first use; ordinary text recognition runs locally.
 Models and PaddleX cache files live in `user_data/cache/paddlex/`, independent of the working directory and virtual
-environment. EDAPGui sets `PADDLE_PDX_CACHE_HOME` to this project-local directory before importing PaddleOCR,
+environment. ED Flight Control sets `PADDLE_PDX_CACHE_HOME` to this project-local directory before importing PaddleOCR,
 overriding an inherited value. Application runs and OCR tests use the same cache. Recreating the virtual environment
 does not remove it. Existing caches in the user's `.paddlex` folder remain untouched; models are downloaded again
 when missing from the project cache.
@@ -87,7 +87,7 @@ Copy IDs from `data/commodities.json`; do not change IDs or create new commoditi
 translations are supported: missing names display in English with a warning. An omitted commodities file has the
 same effect as an empty translation. The central catalogue holds identity, symbol and rarity, not translated names.
 
-Restart EDAPGui after adding or editing packs. The Settings selector discovers valid folders at startup.
+Restart ED Flight Control after adding or editing packs. The Settings selector discovers valid folders at startup.
 
 ## Commodity identity and trading
 

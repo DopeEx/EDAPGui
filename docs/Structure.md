@@ -3,8 +3,8 @@
 Use this tree as a codebase index. Place changes where the behavior belongs, not in whichever module happens to call it.
 
 ```text
-EDAPGui/
-|-- start_ed_ap.bat                 # Set up the environment and start the application
+EDFlightControl/
+|-- start_edfc.bat                  # Set up the environment and start the application
 |-- install_requirements.bat        # Install runtime dependencies in the private environment
 |-- fix_keybinds.bat                # Launch the Elite Dangerous keybinding fixer
 |-- requirements.txt                # Runtime dependencies
@@ -139,6 +139,10 @@ EDAPGui/
 Generated files such as `src/game/keybind_defaults.py` should be regenerated with
 `tools/make_keybind_defaults.py`, not edited by hand. Raw full-screen game screenshots in
 `tests/fixtures/screenshots/` are local-only and must not be committed.
+
+Game/UI integration tests are disabled by default. Set `EDFC_INTEGRATION=1` only for an intentional test with
+Elite Dangerous running; these tests send input to the game. Unit tests isolate log and diagnostic output with
+`EDFC_LOG_DIR` and `EDFC_DEBUG_DIR`.
 
 ## Conventions and boundaries
 

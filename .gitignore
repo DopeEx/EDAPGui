@@ -12,4 +12,4 @@ venv*/
 /dist/
 *.spec
 /build.bat
-/EDAPGui.exe
+/EDFlightControl.exe

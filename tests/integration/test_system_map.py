@@ -10,9 +10,9 @@ def dummy_cb(msg, body=None):
 class SystemMapTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from core.autopilot import EDAutopilot
+        from core.autopilot import Autopilot
 
-        cls.ed_ap = EDAutopilot(cb=dummy_cb)
+        cls.ed_ap = Autopilot(cb=dummy_cb)
 
         scr = cls.ed_ap.scr
         keys = cls.ed_ap.keys

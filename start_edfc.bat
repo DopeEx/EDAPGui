@@ -1,6 +1,6 @@
 @echo off
-REM EDAPGui Startup Script
-REM Uses a private venv next to this script (created on first start) and runs EDAPGui
+REM ED Flight Control Startup Script
+REM Uses a private venv next to this script (created on first start) and runs ED Flight Control
 
 REM Work relative to this script's folder, regardless of where it was started from
 cd /d "%~dp0"
@@ -31,5 +31,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting EDAPGui...
+echo Starting ED Flight Control...
 venv\Scripts\python.exe src\main.py

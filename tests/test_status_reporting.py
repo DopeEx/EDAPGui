@@ -17,7 +17,7 @@ except ModuleNotFoundError as error:
     _PADDLEOCR_STUBBED = True
 
 try:
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 finally:
     if _PADDLEOCR_STUBBED:
         del sys.modules["paddleocr"]
@@ -35,7 +35,7 @@ class StatusReportingTests(unittest.TestCase):
         self.window.log_msg = Mock()
         self.window.ed_ap = SimpleNamespace(vce=Mock())
 
-        self.autopilot = EDAutopilot.__new__(EDAutopilot)
+        self.autopilot = Autopilot.__new__(Autopilot)
         self.autopilot.ap_state = "Idle"
         self.autopilot.update_overlay = Mock()
         self.autopilot._ui_callback = self.window.callback

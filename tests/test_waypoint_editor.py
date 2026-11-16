@@ -1,6 +1,7 @@
 """Route-editor persistence and widget regression tests without the game."""
 
 import copy
+import ctypes
 import json
 import sys
 import tempfile
@@ -12,6 +13,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 import ttkbootstrap as ttk
+import win32con
+import win32gui
 
 from core import paths
 from gui.theme import Metrics, Theme
@@ -40,6 +43,66 @@ finally:
     if _PADDLEOCR_STUBBED:
         del sys.modules["paddleocr"]
         sys.modules.pop("vision.ocr", None)
+
+
+class MainStartupTestCase(unittest.TestCase):
+    def test_icon_is_available_when_the_window_is_first_shown(self):
+        from gui.main_window import main
+
+        observed = []
+        roots = []
+
+        def build_app(root):
+            roots.append(root)
+            self.assertEqual(root.state(), "withdrawn")
+
+            def on_map(event):
+                if event.widget is root:
+                    frame = int(root.wm_frame(), 0)
+                    sizes = []
+                    for kind, width_metric, height_metric in (
+                        (win32con.ICON_SMALL, win32con.SM_CXSMICON, win32con.SM_CYSMICON),
+                        (win32con.ICON_BIG, win32con.SM_CXICON, win32con.SM_CYICON),
+                    ):
+                        handle = win32gui.SendMessage(frame, win32con.WM_GETICON, kind, 0)
+                        self.assertTrue(handle)
+                        info = win32gui.GetIconInfo(handle)
+                        try:
+                            bitmap = win32gui.GetObject(info[4])
+                            actual = (bitmap.bmWidth, bitmap.bmHeight)
+                            expected = (
+                                ctypes.windll.user32.GetSystemMetricsForDpi(width_metric, dpi),
+                                ctypes.windll.user32.GetSystemMetricsForDpi(height_metric, dpi),
+                            )
+                            sizes.append((actual, expected))
+                        finally:
+                            for bitmap_handle in info[3:]:
+                                if bitmap_handle:
+                                    win32gui.DeleteObject(bitmap_handle)
+                    observed.append(sizes)
+
+            root.bind("<Map>", on_map, add="+")
+            root.after(100, root.destroy)
+
+        try:
+            for dpi in (96, 144, 192):
+                with (
+                    self.subTest(dpi=dpi),
+                    mock.patch("gui.theme.window_dpi", return_value=dpi),
+                    mock.patch("gui.main_window.APGui", side_effect=build_app),
+                ):
+                    observed.clear()
+                    main()
+                    self.assertTrue(observed)
+                    for sizes in observed:
+                        for actual, expected in sizes:
+                            self.assertEqual(actual, expected)
+        finally:
+            for root in roots:
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
 
 
 class RouteDocumentTestCase(unittest.TestCase):
@@ -925,6 +988,7 @@ class EditorWidgetsTestCase(unittest.TestCase):
         ap.waypoint_assist_enabled = False
         with mock.patch("gui.main_window.window_state.load", return_value=dict(DEFAULTS)):
             window = APGui(self.root, ed_ap=ap, services=False)
+        self.assertEqual(self.root.title(), "ED Flight Control")
         callback_errors = []
         self.root.report_callback_exception = lambda *error: callback_errors.append(error)
         window.tabs.select(1)

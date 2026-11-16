@@ -379,9 +379,9 @@ def dummy_cb(msg, body=None):
 
 # Usage Example
 if __name__ == "__main__":
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 
-    test_ed_ap = EDAutopilot(cb=dummy_cb)
+    test_ed_ap = Autopilot(cb=dummy_cb)
     test_ed_ap.keys.activate_window = True
     svcs = EDStationServicesInShip(test_ed_ap, test_ed_ap.scr, test_ed_ap.keys, test_ed_ap.ap_ckb)
     svcs.goto_station_services()

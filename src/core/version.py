@@ -5,4 +5,4 @@ The release workflow checks that the pushed tag (v<version>) matches __version__
 __version__ = "1.7.0"
 
 # Shown in the footer and the log
-EDAP_VERSION = f"V{__version__}"
+EDFC_VERSION = f"V{__version__}"

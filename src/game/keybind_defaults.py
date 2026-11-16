@@ -41,7 +41,7 @@ DEFAULT_KEYS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "CamZoomIn": (("Key_Z", ()),),
 }
 
-# Other actions that share a key with an EDAP action in the default presets, so Elite accepts that.
+# Other actions that share a key with an EDFC action in the default presets, so Elite accepts that.
 SHARED_IN_DEFAULTS: dict[str, frozenset[str]] = {
     "YawLeftButton": frozenset(
         [

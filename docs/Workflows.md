@@ -132,7 +132,7 @@ Unknown database schema versions are rejected without rewriting the data.
 
 Storage errors disable statistics/ETA and explicitly notify the user; backup failures warn without stopping flight.
 A damaged database is never silently replaced with empty statistics or automatically restored from an older backup.
-To restore manually, close EDAPGui, preserve the damaged/current file, then copy a known-good backup to
+To restore manually, close ED Flight Control, preserve the damaged/current file, then copy a known-good backup to
 `statistics.sqlite3`. Restoration recovers only the data present in that backup.
 Same-folder backups protect against individual file damage, not disk failure or deletion of the whole folder;
 include `user_data/stats/` in an external backup for that protection.
@@ -177,6 +177,8 @@ Set **Debug > Log level > Debug** before reproducing a recognition problem. Norm
 `user_data/logs/autopilot.log`; the complete technical log, including those messages and debug details, is written to
 `user_data/debug/debug.log` while Debug is enabled. Both logs rotate separately in their respective folders on the first use of each log in a
 program run; up to ten older files are kept for each. The GUI's log-file button opens `autopilot.log`.
+For custom output locations, set `EDFC_LOG_DIR` for normal logs and `EDFC_DEBUG_DIR` for the detailed log and
+diagnostic images before starting the program.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
 The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping

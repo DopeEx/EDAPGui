@@ -10,5 +10,5 @@ if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
 # Keep test logs and diagnostics away from real user data and rotation.
-os.environ.setdefault("EDAP_LOG_DIR", tempfile.mkdtemp(prefix="edap-test-logs-"))
-os.environ.setdefault("EDAP_DEBUG_DIR", tempfile.mkdtemp(prefix="edap-test-debug-"))
+os.environ.setdefault("EDFC_LOG_DIR", tempfile.mkdtemp(prefix="edfc-test-logs-"))
+os.environ.setdefault("EDFC_DEBUG_DIR", tempfile.mkdtemp(prefix="edfc-test-debug-"))

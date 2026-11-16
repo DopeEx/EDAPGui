@@ -223,9 +223,9 @@ def dummy_cb(msg, body=None):
 # Usage Example
 if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)  # Default to log all debug when running this file.
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 
-    ap = EDAutopilot(cb=dummy_cb)
+    ap = Autopilot(cb=dummy_cb)
     scr = ap.scr
     mykeys = ap.keys
     mykeys.activate_window = True  # Helps with single steps testing

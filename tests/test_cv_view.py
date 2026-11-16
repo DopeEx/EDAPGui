@@ -23,7 +23,7 @@ except ModuleNotFoundError as error:
     _PADDLEOCR_STUBBED = True
 
 try:
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 finally:
     if _PADDLEOCR_STUBBED:
         del sys.modules["paddleocr"]
@@ -138,7 +138,7 @@ class CvViewTestCase(unittest.TestCase):
             self.assertEqual(view.windows, {})
 
     def test_overlay_switch_updates_runtime_and_clears_only_diagnostics(self):
-        ap = EDAutopilot.__new__(EDAutopilot)
+        ap = Autopilot.__new__(Autopilot)
         ap.config = {}
         ap.overlay = Mock()
         field = fields.FIELDS_BY_KEY["DebugOverlay"]

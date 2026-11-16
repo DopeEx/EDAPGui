@@ -118,7 +118,7 @@ class PlanTestCase(unittest.TestCase):
         self.assertEqual(change.source, "fallback")
         self.assertNotEqual(change.new, "Key_X")
 
-    def test_edap_hotkeys_are_never_proposed(self):
+    def test_edfc_hotkeys_are_never_proposed(self):
         plan = plan_for(make_file({}))
 
         for change in plan.changes:
@@ -158,7 +158,7 @@ class PlanTestCase(unittest.TestCase):
         self.assertEqual((change.kind, change.slot, change.partners), (CONFLICT, "Secondary", ("UIFocus",)))
         self.assertEqual((change.old, change.new), ("Key_LeftShift+Key_U", "Key_Backspace"))
 
-    def test_conflict_with_unneeded_action_moves_the_edap_action(self):
+    def test_conflict_with_unneeded_action_moves_the_edfc_action(self):
         file = make_file({"SetSpeedZero": (key("Key_F2"), FREE), "Unneeded": (key("Key_F2"), FREE)})
 
         change = changes_by_action(plan_for(file))["SetSpeedZero"]

@@ -121,9 +121,9 @@ def dummy_cb(msg, body=None):
 
 
 if __name__ == "__main__":
-    from core.autopilot import EDAutopilot
+    from core.autopilot import Autopilot
 
-    test_ed_ap = EDAutopilot(cb=dummy_cb)
+    test_ed_ap = Autopilot(cb=dummy_cb)
 
     tce_integration = TceIntegration(test_ed_ap, test_ed_ap.ap_ckb)
     tce_integration.write_shopping_list()

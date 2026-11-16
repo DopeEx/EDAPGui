@@ -1,7 +1,8 @@
-"""Main window for controlling the ED Autopilot.
+"""Main window for controlling ED Flight Control.
 
 Ideas taken from: https://github.com/skai2/EDAutopilot"""
 
+import ctypes
 import json
 import os
 import queue
@@ -22,9 +23,9 @@ import ttkbootstrap as ttk
 from controls.hotkeys import ActionQueue, HotkeyListener
 from controls.mouse_point import MousePoint
 from core import paths, updates
-from core.autopilot import EDAutopilot
+from core.autopilot import Autopilot
 from core.logger import logger
-from core.version import EDAP_VERSION
+from core.version import EDFC_VERSION
 from gui import fields, window_state
 from gui.cv_view import CvView
 from gui.fields import FIELDS, TAB_OVERLAY, fields_of
@@ -45,6 +46,7 @@ from gui.theme import (
     min_caption_width,
     remove_maximize,
     window_dpi,
+    window_icons,
 )
 from gui.widgets import RoundButton, add_tooltip
 
@@ -86,7 +88,7 @@ class APGui:
     def __init__(self, root, ed_ap=None, services=True):
         """ed_ap and services exist for tests: they allow a stand-in autopilot and no hotkeys or update check."""
         self.root = root
-        root.title("EDAutopilot")
+        root.title("ED Flight Control")
         root.protocol("WM_DELETE_WINDOW", self.close_window)
         root.configure(bg=BG)
 
@@ -97,9 +99,9 @@ class APGui:
         self.log_lines = deque(maxlen=2000)
         self.log_text = None
         self.ui_queue = queue.Queue()  # messages from other threads, handled by the GUI thread
-        self.notify_user(f"Starting ED Autopilot {EDAP_VERSION}.")
+        self.notify_user(f"Starting ED Flight Control {EDFC_VERSION}.")
 
-        self.ed_ap = ed_ap if ed_ap is not None else EDAutopilot(cb=self.callback)
+        self.ed_ap = ed_ap if ed_ap is not None else Autopilot(cb=self.callback)
         self.cv_view = CvView(root, self.ed_ap.cv_frames)
         self.mouse = MousePoint()
         self.hotkeys = None
@@ -181,7 +183,7 @@ class APGui:
 
         self.gui_loaded = True
         self.ed_ap.gui_loaded = True
-        self.notify_user("ED Autopilot loaded successfully.")
+        self.notify_user("ED Flight Control loaded successfully.")
 
     # window layout
 
@@ -213,7 +215,7 @@ class APGui:
         self.update_label.grid(row=0, column=0, padx=(0, u(12)))
         self.update_label.bind("<Button-1>", lambda e: self._open_info_tab())
         self._show_update_notice()
-        ttk.Label(right, text=EDAP_VERSION, padding=(u(4), u(2)), foreground=MUTED).grid(row=0, column=1)
+        ttk.Label(right, text=EDFC_VERSION, padding=(u(4), u(2)), foreground=MUTED).grid(row=0, column=1)
         self._apply_layout()
         self._refresh_modes()
 
@@ -494,7 +496,7 @@ class APGui:
             text = ""
         label.configure(text=text, fg=color)
 
-    # callback from the EDAP, to configure GUI items
+    # Callback from the autopilot to configure GUI items
     def callback(self, msg, body=None):
         if threading.current_thread() is not threading.main_thread():
             self.ui_queue.put((msg, body))
@@ -775,7 +777,7 @@ class APGui:
             if tag is None:
                 self.update_text.set("Could not find a published release.")
             else:
-                self.update_text.set(f"You are up to date ({EDAP_VERSION}).")
+                self.update_text.set(f"You are up to date ({EDFC_VERSION}).")
         self._show_update_notice()
         self.refresh_update_button()
 
@@ -884,18 +886,30 @@ class APGui:
         sleep(0.1)
 
         logger.info(f"Restarting: {sys.executable} {sys.argv}")
-        print("Restarting EDAPGui...")
+        print("Restarting ED Flight Control...")
 
         os.execv(sys.executable, ["python"] + sys.argv)
 
 
 def main():
     enable_dpi_awareness()
-    root = ttk.Window(themename="darkly")
+    root = ttk.Window(
+        title="ED Flight Control",
+        themename="darkly",
+        iconphoto=str(paths.ASSETS_DIR / "icons" / "edfc.png"),
+    )
+    root.withdraw()
+    result = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DopeEx.EDFlightControl")
+    if result < 0:
+        raise ctypes.WinError(result)
+    icon = str(paths.ASSETS_DIR / "icons" / "edfc.ico")
+    root.iconbitmap(default=icon)
+    root.iconbitmap(icon)
     root.configure(bg=BG)
     app = APGui(root)  # noqa: F841 - keep a reference for the lifetime of the main loop
-
-    root.mainloop()
+    with window_icons(root, icon):
+        root.deiconify()
+        root.mainloop()
 
 
 if __name__ == "__main__":

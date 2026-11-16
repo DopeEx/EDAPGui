@@ -2,7 +2,10 @@
 
 import ctypes
 import tkinter.font as tkfont
+from contextlib import contextmanager
 
+import win32con
+import win32gui
 from PIL import Image, ImageDraw, ImageTk
 from ttkbootstrap.style import ThemeDefinition
 
@@ -68,6 +71,33 @@ def window_dpi(window):
         return ctypes.windll.user32.GetDpiForWindow(window_handle(window)) or 96
     except Exception:
         return 96
+
+
+@contextmanager
+def window_icons(window, icon_path):
+    """Load separate native title-bar and taskbar icons at the window's current DPI."""
+    hwnd = int(window.wm_frame(), 0)
+    dpi = window_dpi(window)
+    icons = []
+    try:
+        for kind, width_metric, height_metric in (
+            (win32con.ICON_SMALL, win32con.SM_CXSMICON, win32con.SM_CYSMICON),
+            (win32con.ICON_BIG, win32con.SM_CXICON, win32con.SM_CYICON),
+        ):
+            width = ctypes.windll.user32.GetSystemMetricsForDpi(width_metric, dpi)
+            height = ctypes.windll.user32.GetSystemMetricsForDpi(height_metric, dpi)
+            handle = win32gui.LoadImage(
+                None, str(icon_path), win32con.IMAGE_ICON, width, height, win32con.LR_LOADFROMFILE
+            )
+            previous = win32gui.SendMessage(hwnd, win32con.WM_GETICON, kind, 0)
+            icons.append((kind, handle, previous))
+            win32gui.SendMessage(hwnd, win32con.WM_SETICON, kind, handle)
+        yield
+    finally:
+        for kind, handle, previous in icons:
+            if win32gui.IsWindow(hwnd):
+                win32gui.SendMessage(hwnd, win32con.WM_SETICON, kind, previous)
+            win32gui.DestroyIcon(handle)
 
 
 def dark_titlebar(window):
@@ -146,7 +176,7 @@ class Theme:
             light=TEXT, dark=PANEL, bg=BG, fg=TEXT, selectbg=BLUE, selectfg=TEXT, border=LINE,
             inputfg=TEXT, inputbg=FIELD, active=CARD,
         )  # fmt: skip
-        name = f"edap{self._counter}"
+        name = f"edfc{self._counter}"
         self.style.register_theme(ThemeDefinition(name, colors, "dark"))
         self.style.theme_use(name)
         px = self.metrics.px

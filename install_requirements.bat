@@ -1,5 +1,5 @@
 @echo off
-REM Requirements installer for EDAPGui
+REM Requirements installer for ED Flight Control
 REM Always creates/uses a private virtual environment (venv) next to this script,
 REM so the global Python installation is never touched.
 REM Usage: install_requirements.bat [nopause]
@@ -7,7 +7,7 @@ REM Usage: install_requirements.bat [nopause]
 REM Work relative to this script's folder, regardless of where it was started from
 cd /d "%~dp0"
 
-echo Installing EDAPGui Requirements...
+echo Installing ED Flight Control Requirements...
 echo ================================
 
 if exist "venv\Scripts\python.exe" (
@@ -66,7 +66,7 @@ if errorlevel 1 (
 
 echo.
 echo Requirements installation complete!
-echo Start the program with: start_ed_ap.bat
+echo Start the program with: start_edfc.bat
 if /i not "%~1"=="nopause" pause
 exit /b 0
 

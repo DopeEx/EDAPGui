@@ -1,4 +1,4 @@
-"""Console tool: fills gaps and resolves conflicts in the Elite Dangerous keybindings EDAP needs.
+"""Console tool: fills gaps and resolves conflicts in the Elite Dangerous keybindings EDFC needs.
 
 Works on the .binds files, so Elite Dangerous must not be running. Every change is shown and has to be confirmed.
 """
@@ -37,21 +37,21 @@ TEXTS = {
         "files": "Aktive Belegungen:",
         "builtin": "{category}: Voreinstellung '{name}' ist ein eingebautes Preset ohne Datei und kann nicht "
         "geändert werden. Bitte im Spiel auf DopeEx (oder ein eigenes Preset) umstellen, sonst fehlen die "
-        "Tasten für EDAP.",
+        "Tasten für EDFC.",
         GENERAL: "Allgemeine Steuerung",
         SHIP: "Schiffssteuerung",
         "layout": "Tastaturlayout",
         "ok": "Alles in Ordnung, es gibt nichts zu ändern.",
         "notes": "Hinweise (werden nicht geändert):",
-        HOTKEY: "{action}: liegt auf {old}, einem EDAP-Hotkey. Bitte im Spiel auf eine andere Taste legen.",
+        HOTKEY: "{action}: liegt auf {old}, einem EDFC-Hotkey. Bitte im Spiel auf eine andere Taste legen.",
         UNKNOWN_KEY: "{action}: die Taste '{old}' ist für das Layout {layout} unbekannt und wird übersprungen.",
         NO_KEY_FOUND: "{action}: es wurde keine freie Taste gefunden. Bitte im Spiel belegen.",
         GAP: "LÜCKE: keine Tastaturbelegung",
         REPLACE: "KEIN FREIER PLATZ: überschreibt eine Belegung eines anderen Geräts",
         CONFLICT: "KONFLIKT: Taste ist doppelt belegt mit {partners}",
         "default": "Standard-Voreinstellung von Elite",
-        "preferred": "Vorschlag von EDAP (einzelne Taste, ohne Modifier)",
-        "fallback": "Vorschlag von EDAP (einzelne Taste, ohne Modifier)",
+        "preferred": "Vorschlag von EDFC (einzelne Taste, ohne Modifier)",
+        "fallback": "Vorschlag von EDFC (einzelne Taste, ohne Modifier)",
         "change": "[{n}/{total}] {action} ({category}, {file})",
         "slot": "    {slot}: {old}  ->  {new}   [{source}]",
         "empty": "(leer)",
@@ -74,21 +74,21 @@ TEXTS = {
         "once and save them.",
         "files": "Active bindings:",
         "builtin": "{category}: the preset '{name}' is built into the game, has no file and cannot be changed. "
-        "Please switch to DopeEx (or a custom preset) in the game, otherwise EDAP lacks its keys.",
+        "Please switch to DopeEx (or a custom preset) in the game, otherwise EDFC lacks its keys.",
         GENERAL: "General controls",
         SHIP: "Ship controls",
         "layout": "Keyboard layout",
         "ok": "Everything is fine, nothing to change.",
         "notes": "Notes (not changed):",
-        HOTKEY: "{action}: is on {old}, an EDAP hotkey. Please move it to another key in the game.",
+        HOTKEY: "{action}: is on {old}, an EDFC hotkey. Please move it to another key in the game.",
         UNKNOWN_KEY: "{action}: the key '{old}' is unknown for the layout {layout} and is skipped.",
         NO_KEY_FOUND: "{action}: no free key was found. Please bind it in the game.",
         GAP: "GAP: no keyboard binding",
         REPLACE: "NO FREE SLOT: overwrites a binding of another device",
         CONFLICT: "CONFLICT: key is also used by {partners}",
         "default": "Elite default preset",
-        "preferred": "EDAP suggestion (single key, no modifier)",
-        "fallback": "EDAP suggestion (single key, no modifier)",
+        "preferred": "EDFC suggestion (single key, no modifier)",
+        "fallback": "EDFC suggestion (single key, no modifier)",
         "change": "[{n}/{total}] {action} ({category}, {file})",
         "slot": "    {slot}: {old}  ->  {new}   [{source}]",
         "empty": "(empty)",
