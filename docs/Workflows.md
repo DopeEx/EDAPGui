@@ -73,6 +73,10 @@ they are departure checks, not collision avoidance during travel.
 For route editing, imports, trade options and troubleshooting, see the [Waypoint guide](Waypoint.md).
 The editor's **Plot to System/Station** buttons only select targets; they do not start travel or trading.
 
+**Settings > Activate Elite window for each key** is enabled by default for new configurations and when the setting
+is missing. Existing saved choices are preserved. It attempts to bring Elite Dangerous to the front before each
+key or group of keys, but Windows can reject the focus change; keep the game focused while an assist is active.
+
 ### Assist statistics and ETA
 
 The Info tab shows lifetime assisted jumps, lightyears and active time for the current account and individual ship,

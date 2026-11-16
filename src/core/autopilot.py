@@ -196,7 +196,7 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
             "HotKey_StartTravel": "home",  # if going to use other keys, need to look at the python keyboard package
             "HotKey_StopAllAssists": "end",
             "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
-            "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
+            "ActivateEliteEachKey": True,  # Activate Elite window before each key or group of keys
             "OverlayTextEnable": True,
             "OverlayTextYOffset": 15,
             "OverlayTextXOffset": 1,
@@ -257,6 +257,8 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         # if we read it then point to it, otherwise use the default table above
         if cnf is not None:
             # NOTE!!! Add default values for new entries below!
+            if "ActivateEliteEachKey" not in cnf:
+                cnf["ActivateEliteEachKey"] = self.config["ActivateEliteEachKey"]
             if "SunBrightThreshold" not in cnf:
                 cnf["SunBrightThreshold"] = 125
             if "TCEDestinationFilepath" not in cnf:

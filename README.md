@@ -69,8 +69,9 @@ The waypoint guide also explains [first checks and reporting problems](docs/Wayp
 - A borderless game window, default HUD colours, and UI brightness of at least 50%
 - A docking computer for automatic docking
 
-While an assist is active, keep Elite Dangerous focused and avoid switching to another window, as actions may affect
-the currently focused window. A very wide field of view can also make target detection less reliable.
+By default, EDFC attempts to focus Elite Dangerous before each key or group of keys. Still keep the game focused
+while an assist is active: Windows can reject focus changes, so inputs may reach another window.
+A very wide field of view can also make target detection less reliable.
 
 ## Install and start
 

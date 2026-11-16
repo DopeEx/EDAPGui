@@ -34,6 +34,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Renamed the application from EDAPGui to **ED Flight Control (EDFC)**, with a new ship-and-orbit window icon. Start the source installation with `start_edfc.bat`.
+- Focusing Elite Dangerous before each key or group of keys is now enabled by default. Existing saved settings are preserved.
 - Removed the undocumented Navigation-panel system-bookmark type; legacy routes with a named station fall back to station-name selection.
 - Renamed DSS Assist to **Honk Assist** and use **Discovery Scanner Assist** in status, settings and documentation; existing fire-button settings migrate automatically.
 - Commodity suggestions now open when the search field is clicked and narrow as you type.
