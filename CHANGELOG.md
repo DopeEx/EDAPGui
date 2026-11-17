@@ -6,6 +6,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Short supercruise disengage prompts are no longer rejected by a rigid total glyph count, preventing missed OCR checks and canceled readings as letter counts fluctuate.
+- Target-ring detection compares nearby template sizes even when the normal-size match barely passes, avoiding switches between weak normal-size and much stronger resized matches.
+
 ## [2.0.0] - 2026-11-16
 
 ### Important notice

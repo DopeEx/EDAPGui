@@ -106,8 +106,7 @@ class ScreenRegions:
         self.message_text_fraction = 0.005
         # The message has long horizontal cyan frame lines: at least this share of a pixel row must be message colored
         self.message_line_fraction = 0.25
-        # A prompt has several compact glyphs; cockpit decorations are usually sparse or fragmented.
-        self.message_glyph_components_min = 16
+        # A prompt has a row of compact glyphs; total counts vary with text and antialiasing.
         self.message_glyph_components_max = 80
         self.last_message_glyph_components = 0
         self.message_row_glyphs_min = 9
@@ -249,20 +248,23 @@ class ScreenRegions:
         return img_region, (minVal, maxVal, minLoc, maxLoc), match
 
     def match_target_multiscale(self, source_callback=None):
-        """Match the native target first, then bounded size variants on the same capture."""
+        """Compare bounded size variants on one capture, retaining native near ties."""
         image, result, _ = self.match_template_in_region(
             "target", "target", inv_col=False, source_callback=source_callback
         )
         template = self.templates.template["target"]["image"]
         best_template = template
-        if result[1] < self.target_thresh:
-            for scale in (0.95, 1.05):
-                resized = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-                if image.shape[0] < resized.shape[0] or image.shape[1] < resized.shape[1]:
-                    continue
-                candidate = cv2.minMaxLoc(cv2.matchTemplate(image, resized, cv2.TM_CCOEFF_NORMED))
-                if candidate[1] > result[1]:
-                    result, best_template = candidate, resized
+        native_result = result
+        for scale in (0.95, 1.05):
+            resized = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            if image.shape[0] < resized.shape[0] or image.shape[1] < resized.shape[1]:
+                continue
+            candidate = cv2.minMaxLoc(cv2.matchTemplate(image, resized, cv2.TM_CCOEFF_NORMED))
+            if candidate[1] > result[1]:
+                result, best_template = candidate, resized
+        # Do not let small score fluctuations displace an already usable native match.
+        if native_result[1] >= self.target_thresh and result[1] < native_result[1] + 0.03:
+            result, best_template = native_result, template
         return image, result, best_template
 
     def match_compass_multiscale(self):
@@ -368,9 +370,7 @@ class ScreenRegions:
         return (
             self.last_message_fraction >= self.message_text_fraction
             and self.last_message_line >= self.message_line_fraction
-            and self.message_glyph_components_min
-            <= self.last_message_glyph_components
-            <= self.message_glyph_components_max
+            and self.last_message_glyph_components <= self.message_glyph_components_max
             and self.last_message_row_glyphs >= self.message_row_glyphs_min
         )
 

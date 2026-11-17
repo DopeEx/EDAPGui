@@ -173,9 +173,12 @@ Occluded-target detection checks white and beige dashed rings with their existin
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight
 ring-size variation at the same screen resolution. Bright surfaces alone do not qualify as a ring.
 
-Visible-target detection also checks templates 5% smaller and larger, but only when the native template falls
-below the existing match threshold. All variants reuse the same filtered capture. Alignment uses the circle
-center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
+Visible-target detection compares the native template with variants 5% smaller and larger on every reading,
+even when the native score barely passes the existing threshold. All variants reuse the same filtered capture.
+The best variant is used; an already accepted native match retains priority unless a variant improves its score
+by at least 0.03. This avoids switching between a weak native match and a much stronger resized match merely
+because the native score crosses the threshold. Matching the extra variants adds processing time but no captures.
+Alignment uses the circle center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
 path so a recognized visible ring is not treated as missing. Targets obscured by cockpit structure or other
 HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
 to include rings near the previous upper boundary.
@@ -201,9 +204,12 @@ For custom output locations, set `EDFC_LOG_DIR` for normal logs and `EDFC_DEBUG_
 diagnostic images before starting the program.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
-The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
-the same horizontal scanline, in addition to the color-area and line checks. This rejects sparse cockpit decorations,
-scattered HUD readouts and dense cyan noise without increasing the total glyph-count requirement.
+The supercruise message pre-check requires at least nine compact, glyph-sized cyan components overlapping the same
+horizontal scanline, at most 80 compact components overall, and the existing color-area and line checks.
+There is no separate 16-glyph minimum: short English prompts and letters merged by antialiasing can contain fewer
+components. This also prevents fluctuations between 13-16 otherwise aligned glyphs from canceling an in-flight OCR
+job. Sparse cockpit decorations, scattered HUD readouts and dense cyan noise remain rejected. If the message
+pre-check no longer passes, its job is still invalidated immediately; this is not a time-based grace period.
 
 During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
 target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.
