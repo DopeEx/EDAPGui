@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Debug-mode Galaxy Map snapshots on failed search checks and unconfirmed routes, without capturing images during successful steps.
+- Debug-mode snapshots of the exact rejected HUD frame and both color masks when the supercruise message pre-check stops detecting a prompt.
 
 ### Changed
 
@@ -20,6 +21,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Odyssey Galaxy Map system-name searches fall back to OCR-checked mouse selection and the right-hand plot button if keyboard plotting does not produce the requested route, with bounded retries and route confirmation before continuing.
 - Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner, allowing the selected station name to reach OCR.
 - Navigation station-name OCR removes complete tall symbols before cropping the name column, preventing clipped icon fragments from becoming false name prefixes.
+- Dim blue supercruise disengage lettering now passes the message pre-check instead of leaving only its brighter frame detectable and preventing OCR from starting.
 
 ## [2.1.0] - 2026-11-17
 

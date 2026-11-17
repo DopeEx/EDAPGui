@@ -206,10 +206,21 @@ Recognition scores, message-gate measurements, OCR text and fallback attempts ar
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
 The supercruise message pre-check requires at least nine compact, glyph-sized cyan components overlapping the same
 horizontal scanline, at most 80 compact components overall, and the existing color-area and line checks.
+The existing bright-cyan mask is checked first. If it does not pass, a second mask on the same capture includes dim
+cyan-to-blue lettering (OpenCV HSV hue 88-110, saturation at least 60 and value at least 140), not just the brighter
+frame. Each mask must independently satisfy the same area, line and glyph-geometry requirements; measurements from
+different masks are not combined. Keeping the original mask first preserves prompts partly obscured by bright radar
+elements, where including dimmer pixels can merge otherwise separate letters.
 There is no separate 16-glyph minimum: short English prompts and letters merged by antialiasing can contain fewer
 components. This also prevents fluctuations between 13-16 otherwise aligned glyphs from canceling an in-flight OCR
 job. Sparse cockpit decorations, scattered HUD readouts and dense cyan noise remain rejected. If the message
 pre-check no longer passes, its job is still invalidated immediately; this is not a time-based grace period.
+In Debug mode, a passing-to-failing pre-check transition saves a `hud-disengage` case with reason `gate-lost`:
+the unmodified rejected crop (`evaluated`) and its `mask-bright` and `mask-dim` images. All three come from the
+same evaluated frame, without an additional capture. Only one case is saved per transition, not on every
+subsequent rejected check; the existing 50-case category limit applies. These images help distinguish an actually
+disappearing safe-exit prompt from a pre-check failure. A saved case does not itself prove that OCR had completed
+or that the safe-exit window remained open. Dropout decisions and OCR invalidation are unchanged.
 
 During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
 target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.

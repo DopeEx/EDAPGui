@@ -257,6 +257,33 @@ class OCRTestCase(unittest.TestCase):
         panel.ocr.capture_region_pct = Mock(return_value=load_screenshot(path))
         self.assertEqual(panel._selected_destination(), "OHM CITY")
 
+    def test_local_dim_blue_disengage_prompt_reaches_real_ocr(self):
+        from i18n.localization import LocalizationManager
+        from tests.helpers import FakeScreen, load_screenshot
+        from vision.disengage import read_disengage_prompt
+        from vision.regions import ScreenRegions
+
+        path = (
+            paths.ROOT
+            / "tests"
+            / "fixtures"
+            / "screenshots"
+            / "diagnostics"
+            / "hud-disengage"
+            / "mandalay-dim-blue-disengage_evaluated.png"
+        )
+        if not path.exists():
+            self.skipTest("local dim blue disengage prompt unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), Mock())
+        self.assertTrue(regions.message_text_present())
+        locale = LocalizationManager(str(paths.LOCALES_DIR), "de")
+        reading = read_disengage_prompt(
+            OCR(screen=None, language=locale.ocr_language),
+            locale.all_values("PRESS_TO_DISENGAGE_MSG"),
+            regions.message_image,
+        )
+        self.assertTrue(reading.matched, reading.text)
+
     def test_local_slanted_navigation_destination_reaches_name_ocr(self):
         from panels.navigation import EDNavigationPanel
 
