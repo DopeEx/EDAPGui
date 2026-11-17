@@ -330,14 +330,27 @@ class EDStationServicesInShip:
                     logger.debug(f"Execute trade: Sell {name} ({qty} of {demand} demanded) at position {index + 1}.")
                     break
 
-        # Qty we can sell. Unlike buying, we can sell more than the demand
-        # But maybe not at all stations!
-        act_qty = qty
-
         if index < 0:
             logger.warning("Cannot select requested sell commodity: commodity=%r", name)
             self.ap_ckb("log", f"Cannot select '{name}' for sale. Waypoint Assist stopped.")
             return False, 0
+
+        cargo_item = cargo_parser.get_item_by_commodity_id(commodity_id)
+        available = cargo_item["Count"] if cargo_item is not None else 0
+        if available <= 0:
+            logger.warning("Cannot sell commodity %s: no units in ship cargo.", commodity_id)
+            self.ap_ckb("log", f"No units of '{name}' are available for sale. Waypoint Assist stopped.")
+            return False, 0
+        act_qty = min(qty, available)
+        use_maximum = qty >= 9999 or qty >= available
+        logger.debug(
+            "Sell quantity selection: commodity=%s requested=%s available=%s planned=%s maximum=%s",
+            commodity_id,
+            qty,
+            available,
+            act_qty,
+            use_maximum,
+        )
 
         if index > -1:
             keys.send("UI_Up", hold=3.0)  # go up to top of list
@@ -355,10 +368,9 @@ class EDStationServicesInShip:
             keys.send("UI_Up", repeat=2)  # make sure at top
 
             # Log the planned quantity
-            if qty >= 9999:
+            if use_maximum:
                 self.ap_ckb("log+vce", f"Selling all our units of {name}.")
                 logger.info(f"Attempting to sell all our units of {name}")
-                keys.send("UI_Right", hold=4)
             else:
                 self.ap_ckb("log+vce", f"Selling {act_qty} units of {name}.")
                 logger.info(f"Attempting to sell {act_qty} units of {name}")

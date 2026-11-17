@@ -117,6 +117,8 @@ class MarketListSafetyTestCase(unittest.TestCase):
 class TradeDialogSafetyTestCase(unittest.TestCase):
     def setUp(self):
         self.services = StationServicesTestCase.make_services("en")
+        self.cargo_parser = mock.Mock()
+        self.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 10}
         self.services.market_parser = mock.Mock()
         target = {
             "id": 128049197,
@@ -148,7 +150,7 @@ class TradeDialogSafetyTestCase(unittest.TestCase):
                     self.assertRaises(TradeDialogUnconfirmedError),
                 ):
                     if selling:
-                        services.sell_commodity(services.keys, "128049197", 2, mock.Mock())
+                        services.sell_commodity(services.keys, "128049197", 2, self.cargo_parser)
                     else:
                         services.buy_commodity(services.keys, "128049197", 2, 10)
                 calls = services.keys.send.call_args_list
@@ -162,7 +164,7 @@ class TradeDialogSafetyTestCase(unittest.TestCase):
                 self.services.keys.reset_mock()
                 with mock.patch.object(self.services, "confirm_trade_dialog", return_value=True) as confirm:
                     result = (
-                        self.services.sell_commodity(self.services.keys, "128049197", 2, mock.Mock())
+                        self.services.sell_commodity(self.services.keys, "128049197", 2, self.cargo_parser)
                         if selling
                         else self.services.buy_commodity(self.services.keys, "128049197", 2, 10)
                     )
@@ -194,7 +196,7 @@ class TradeDialogSafetyTestCase(unittest.TestCase):
                 self.services.keys.reset_mock()
                 with mock.patch.object(self.services, "confirm_trade_dialog", return_value=True):
                     result = (
-                        self.services.sell_commodity(self.services.keys, "128049197", 1, mock.Mock())
+                        self.services.sell_commodity(self.services.keys, "128049197", 1, self.cargo_parser)
                         if selling
                         else self.services.buy_commodity(self.services.keys, "128049197", 1, 10)
                     )
@@ -229,6 +231,62 @@ class TradeDialogSafetyTestCase(unittest.TestCase):
                         (True, expected),
                     )
                 self.assertIn(mock.call("UI_Right", hold=4), self.services.keys.send.call_args_list)
+
+    def test_sell_uses_maximum_only_when_request_covers_held_commodity(self):
+        for requested, held, expected, maximum in (
+            (9999, 23, 23, True),
+            (2000, 23, 23, True),
+            (23, 23, 23, True),
+            (22, 23, 22, False),
+        ):
+            with self.subTest(requested=requested, held=held):
+                self.services.keys.reset_mock()
+                self.cargo_parser.get_item_by_commodity_id.return_value = {"Count": held}
+                with mock.patch.object(self.services, "confirm_trade_dialog", return_value=True):
+                    result = self.services.sell_commodity(self.services.keys, "128049197", requested, self.cargo_parser)
+                self.assertEqual(result, (True, expected))
+                calls = self.services.keys.send.call_args_list
+                self.assertNotIn(mock.call("UI_Right", hold=4), calls)
+                self.assertEqual(mock.call("UI_Left", hold=4.0) in calls, not maximum)
+                self.assertEqual(mock.call("UI_Right", hold=0.04, repeat=expected) in calls, not maximum)
+                if maximum:
+                    quantity_calls = [sent for sent in calls if sent.args[0] in ("UI_Left", "UI_Right")]
+                    self.assertEqual(quantity_calls, [])
+                    self.assertEqual(calls[-2:], [mock.call("UI_Down"), mock.call("UI_Select")])
+
+    def test_sell_without_held_commodity_stops_before_inputs(self):
+        for item in (None, {"Count": 0}):
+            with self.subTest(item=item):
+                self.cargo_parser.get_item_by_commodity_id.return_value = item
+                self.assertEqual(
+                    self.services.sell_commodity(self.services.keys, "128049197", 9999, self.cargo_parser),
+                    (False, 0),
+                )
+                self.services.keys.send.assert_not_called()
+                self.services.ap_ckb.assert_called_with(
+                    "log", "No units of 'Polymere' are available for sale. Waypoint Assist stopped."
+                )
+
+    def test_fixed_buy_uses_maximum_only_when_stock_or_capacity_limits_request(self):
+        for requested, stock, free_cargo, expected, maximum in (
+            (23, 100, 23, 23, True),
+            (2000, 100, 23, 23, True),
+            (23, 23, 100, 23, True),
+            (22, 100, 23, 22, False),
+        ):
+            with self.subTest(requested=requested, stock=stock, free_cargo=free_cargo):
+                self.services.keys.reset_mock()
+                self.services.market_parser.get_buyable_items.return_value = [
+                    {"id": 128049197, "Name_Localised": "Polymere", "Stock": stock}
+                ]
+                with mock.patch.object(self.services, "confirm_trade_dialog", return_value=True):
+                    self.assertEqual(
+                        self.services.buy_commodity(self.services.keys, "128049197", requested, free_cargo),
+                        (True, expected),
+                    )
+                calls = self.services.keys.send.call_args_list
+                self.assertEqual(mock.call("UI_Right", hold=4) in calls, maximum)
+                self.assertEqual(mock.call("UI_Right", hold=0.04, repeat=expected) in calls, not maximum)
 
     def test_confirmation_timeout_sends_no_inputs(self):
         with (

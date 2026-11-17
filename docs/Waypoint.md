@@ -220,6 +220,15 @@ At each stop, the assist processes:
 **All** requests as much of that commodity as possible within the applicable cargo and market limits.
 It does not bypass credit, stock or demand restrictions.
 
+The buy dialog starts at zero. For **All**, or a fixed request reaching the available stock or free cargo
+space, the assist holds the increase input toward the maximum; smaller requests are entered unit by unit.
+The sell dialog starts at its maximum. For **All**, or a fixed request covering the held amount of that
+commodity, the assist uses that default without changing the quantity. For a smaller fixed request, it first
+clears the quantity and enters the requested amount unit by unit. This changes only the input method, not the
+saved request; progress still uses the journal-confirmed transaction quantity. The buy maximum and partial-sale
+clear inputs currently hold a direction for four seconds; reaching the limit with large cargo capacities still
+requires in-game validation.
+
 With **Reduce remaining quantities after trades** enabled, successful trades reduce the amount still requested.
 For example, buying 2 of a requested 5 leaves 3.
 This also applies to All: it is stored as a large request of 9999 units, not an unlimited amount.

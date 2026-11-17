@@ -10,6 +10,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Debug-mode Galaxy Map snapshots on failed search checks and unconfirmed routes, without capturing images during successful steps.
 
+### Changed
+
+- Commodity sales use the sell dialog's default maximum without quantity inputs when the request covers all units of that commodity in the hold, including **All**. Smaller fixed quantities remain individually selected, and progress still follows confirmed transactions.
+
 ### Fixed
 
 - Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
