@@ -173,9 +173,12 @@ Occluded-target detection checks white and beige dashed rings with their existin
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight
 ring-size variation at the same screen resolution. Bright surfaces alone do not qualify as a ring.
 
-Visible-target detection also checks templates 5% smaller and larger, but only when the native template falls
-below the existing match threshold. All variants reuse the same filtered capture. Alignment uses the circle
-center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
+Visible-target detection compares the native template with variants 5% smaller and larger on every reading,
+even when the native score barely passes the existing threshold. All variants reuse the same filtered capture.
+The best variant is used; an already accepted native match retains priority unless a variant improves its score
+by at least 0.03. This avoids switching between a weak native match and a much stronger resized match merely
+because the native score crosses the threshold. Matching the extra variants adds processing time but no captures.
+Alignment uses the circle center adjusted to the actual matched template dimensions; the hidden-target check uses the same recognition
 path so a recognized visible ring is not treated as missing. Targets obscured by cockpit structure or other
 HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
 to include rings near the previous upper boundary.

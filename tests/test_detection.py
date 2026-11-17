@@ -271,6 +271,22 @@ class TemplateTestCase(MatchingTestCase):
 
 
 class CompassTestCase(MatchingTestCase):
+    def test_incoming_hollow_and_charging_rim_markers_keep_their_direction(self):
+        folder = FIXTURES / "screenshots" / "diagnostics" / "incoming-20261116" / "compass"
+        available = sorted(folder.glob("*_evaluated.png"))
+        if not available:
+            self.skipTest("local incoming compass cases unavailable")
+        for path in available:
+            with self.subTest(screenshot=path.name), patch.object(Detector, "dump_compass_debug"):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path), width=3840, height=2160), self.templates)
+                offset = Detector().get_nav_offset(regions)
+                self.assertIsNotNone(offset)
+                self.assertEqual(offset["z"], -1.0 if "hollow" in path.name else 1.0)
+                if "hollow" in path.name:
+                    self.assertLess(offset["y"], -0.4)
+                else:
+                    self.assertLess(offset["x"], -0.8)
+
     def test_local_sdr_ring_markers_at_bottom_keep_position_and_direction(self):
         for filename, expected in (
             ("19_crop_compass-behind-bottom_sdr-hud100_de.png", (34, 51)),
@@ -516,6 +532,16 @@ class CompassTestCase(MatchingTestCase):
 
 
 class TargetTestCase(MatchingTestCase):
+    def test_incoming_unselected_contact_and_empty_planet_are_not_targets(self):
+        folder = FIXTURES / "screenshots" / "diagnostics" / "incoming-20261116" / "target"
+        available = sorted(folder.glob("*_evaluated.png"))
+        if not available:
+            self.skipTest("local incoming target negatives unavailable")
+        for path in available:
+            with self.subTest(screenshot=path.name):
+                regions = ScreenRegions(FakeScreen(load_screenshot(path), width=3840, height=2160), self.templates)
+                self.assertIsNone(Detector().get_destination_offset(regions))
+
     def test_target_crossing_previous_search_top_is_detected(self):
         height, width = 2160, 3840
         image = np.zeros((height, width, 3), np.uint8)
@@ -551,8 +577,6 @@ class TargetTestCase(MatchingTestCase):
                         image[100 : 100 + target.shape[0], 200 : 200 + target.shape[1]][target > 128] = color
                         screen = FakeScreen(image, width=height * 16 // 9, height=height)
                         regions = ScreenRegions(screen, templates)
-                        # Clean synthetic arcs can pass the native threshold; force the size fallback here.
-                        regions.target_thresh = 0.8
                         _, result, selected = regions.match_target_multiscale()
                         self.assertGreaterEqual(result[1], regions.target_thresh)
                         self.assertEqual(selected.shape, target.shape)
@@ -576,7 +600,43 @@ class TargetTestCase(MatchingTestCase):
                             self.assertFalse(detector.is_destination_hidden_ahead(regions))
                             have.assert_not_called()
 
-    def test_native_target_keeps_priority_and_scaled_matches_reuse_one_capture(self):
+    def test_clearly_stronger_scaled_target_wins_even_when_native_passes(self):
+        regions = self.regions("target")
+        image = np.zeros((700, 700), np.uint8)
+        native_result = (0, 0.56, (0, 0), (200, 100))
+        with (
+            patch.object(regions, "match_template_in_region", return_value=(image, native_result, None)),
+            patch(
+                "vision.regions.cv2.minMaxLoc",
+                side_effect=[
+                    (0, 0.4, (0, 0), (201, 102)),
+                    (0, 0.83, (0, 0), (202, 103)),
+                ],
+            ),
+        ):
+            _, result, selected = regions.match_target_multiscale()
+        self.assertEqual(result[1], 0.83)
+        self.assertEqual(selected.shape, (201, 174))
+
+    def test_small_scaled_score_advantage_does_not_displace_usable_native_target(self):
+        regions = self.regions("target")
+        image = np.zeros((700, 700), np.uint8)
+        native_result = (0, 0.56, (0, 0), (200, 100))
+        with (
+            patch.object(regions, "match_template_in_region", return_value=(image, native_result, None)),
+            patch(
+                "vision.regions.cv2.minMaxLoc",
+                side_effect=[
+                    (0, 0.57, (0, 0), (201, 102)),
+                    (0, 0.58, (0, 0), (202, 103)),
+                ],
+            ),
+        ):
+            _, result, selected = regions.match_target_multiscale()
+        self.assertEqual(result, native_result)
+        self.assertIs(selected, self.templates.template["target"]["image"])
+
+    def test_native_target_keeps_near_ties_and_variants_reuse_one_capture(self):
         regions = self.regions("target")
         with (
             patch.object(regions.screen, "get_screen_region", wraps=regions.screen.get_screen_region) as capture,
@@ -586,7 +646,7 @@ class TargetTestCase(MatchingTestCase):
         self.assertGreaterEqual(result[1], regions.target_thresh)
         self.assertIs(selected, self.templates.template["target"]["image"])
         capture.assert_called_once()
-        resize.assert_not_called()
+        self.assertEqual(resize.call_count, 2)
         regions = self.regions("empty")
         callback = Mock()
         with patch.object(
