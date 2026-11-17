@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-17
+
 ### Added
 
 - Install release updates from the Info tab or the standalone Windows updater without Git, preserving settings, routes and the Python environment, with program-file backups and interrupted-update recovery. Testers can opt in to main development builds; changed dependencies still require running `install_requirements.bat` manually.
