@@ -106,6 +106,21 @@ These checks do not check live market stock, docking access or the positions of 
 ### Without bookmarks
 
 For another system, the assist plots a Galaxy Map route using the system name.
+In Odyssey, opening the map waits up to 30 seconds for the **CARTOGRAPHICS** heading using OCR.
+The assist then uses the keyboard to enter the name, select the search result and plot the route.
+This keyboard sequence does not require OCR of the name or result and can plot while the camera is still
+moving toward the system. Map-focus checks remain active throughout.
+
+The requested final system must be confirmed in the game's route data before the assist continues.
+If keyboard plotting does not produce the expected route, the assist falls back to mouse selection.
+This fallback uses OCR to check the entered name, the exact first result and the selected system name on the
+right-hand information card before clicking **Plot route** (the connected-nodes icon).
+Similar names below the first result are ignored.
+
+There are at most three selection/plot attempts in total: one keyboard attempt followed by up to two mouse
+attempts. Each mouse search-field entry can be retried up to three times. If selection loses map focus, it stops.
+The map is closed after route confirmation or exhausted attempts, if it is still active.
+Keep the game focused and do not move the mouse or use controls during target selection.
 After arrival, it looks for the station name in the left-hand **Navigation** panel unless the correct target is
 already selected.
 
@@ -133,6 +148,8 @@ Bookmarks are optional shortcuts to destinations you have already saved in the g
 
 A **Galaxy bookmark** is tried first when travelling to another system.
 If it does not produce the expected route, the assist tries a system-name search.
+Galaxy bookmark selection still uses keyboard navigation and assumes that the map menu has focus; it does not
+perform the system-name search's mouse-based focus recovery.
 If direction keys move the map instead, check for overlapping menu and map movement bindings as described in
 [Keybindings](Keybindings.md#galaxy-map-menu-conflicts).
 A **System bookmark** can select a local destination after arrival. System Map bookmark categories are **Fav**,
@@ -367,7 +384,7 @@ The following examples show the views inside the Waypoints tab, not separate win
 | The route does not start | Close or apply the open form, save the route and check that at least one stop is active and pending. |
 | A station is not found | Check its exact name, current system and Navigation filters. Try a bookmark if screen reading keeps failing. |
 | A bookmark selects the wrong place | Check its category and position in your own game lists. |
-| Galaxy Map opens but does not search | A matching route may already exist and can be reused. The next jump target is checked separately before alignment. |
+| Galaxy Map opens but does not search or plot | A matching route may already exist and can be reused. Otherwise, keep the game focused and check for [menu/map key conflicts](Keybindings.md#galaxy-map-menu-conflicts). The log distinguishes missing map focus, an unconfirmed route and failed OCR in the mouse fallback. Debug-mode images are saved only for failures. |
 | A sale is skipped | Check whether the named commodity is in your cargo hold. |
 | Trading stops or quantities look wrong | Inspect the actual cargo and market result before restarting; do not immediately reset progress. |
 | A stop is visited again | Check Repeat route, whether progress was reset, or whether edited route changes were saved. |

@@ -263,6 +263,23 @@ and is excluded from Git along with the rest of `user_data/`.
   itself still uses the original region. The larger capture is used only while Debug is enabled.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
+- Odyssey Galaxy Map name searches save full game-window snapshots in `user_data/debug/galaxy-map/` only for
+  failed checks, lost map focus or unconfirmed routes. Successful steps do not capture or save diagnostic images.
+  The debug log records the stage, requested system, attempt, game GUI focus and window-activation setting.
+  Opening the map waits up to 30 seconds for CARTOGRAPHICS using OCR. The keyboard search then uses Enter,
+  menu directions, select and camera zoom without reading the search name, result or plot prompt.
+  Map-focus checks remain active, but do not prove text-field focus. Plotting can start while the camera is moving.
+  The requested final destination in NavRoute.json confirms success.
+  An unconfirmed keyboard route switches to the OCR-checked mouse fallback. Its clicks use resolution-relative
+  regions and the captured monitor's desktop offset. Name comparisons ignore case and extra whitespace.
+  Mouse search-field entry has up to three attempts; the first result and the selected system card must match
+  before the plot button is clicked. There are at most three selection/plot attempts in total: one keyboard
+  attempt followed by up to two mouse attempts.
+  Failed mouse OCR checks save one image per expired wait, not for individual polling misses.
+  Each unconfirmed plot attempt saves `route-unconfirmed`; unavailable route data saves `route-unavailable`.
+  The failed check's image also covers a fallback or final failure; no extra image duplicates it.
+  Lost focus saves `focus-lost` and stops selection. The map is closed after success or exhausted attempts
+  if it is still active. The same 50-case category limit applies; technical text logging remains available.
 - An unconfirmed trade dialog saves its separately captured title and commodity regions and a later dialog context.
   OCR wait timeouts, unreadable or unmatched disengage OCR results, and ambiguous alignment or line-of-sight text
   can also save cases. Disengage mismatches save one case per continuous message-gate event, including when OCR
