@@ -5,6 +5,7 @@ Use this tree as a codebase index. Place changes where the behavior belongs, not
 ```text
 EDFlightControl/
 |-- start_edfc.bat                  # Set up the environment and start the application
+|-- update_edfc.bat                 # Standalone release/main updater; also launched by the GUI
 |-- install_requirements.bat        # Install runtime dependencies in the private environment
 |-- fix_keybinds.bat                # Launch the Elite Dangerous keybinding fixer
 |-- requirements.txt                # Runtime dependencies
@@ -27,6 +28,7 @@ EDFlightControl/
 |   |   |-- types.py                # Shared enums and exceptions
 |   |   |-- version.py              # Single source for the app version
 |   |   |-- updates.py              # Check GitHub for application updates
+|   |   |-- install_lock.py         # Exclude application startup and program-file exchange
 |   |   `-- __init__.py             # Package marker
 |   |-- vision/
 |   |   |-- screen.py               # Capture the game display and manage focus
@@ -98,6 +100,7 @@ EDFlightControl/
 |   |-- stats/                      # Local SQLite statistics and rotating backups (not versioned)
 |   `-- cache/paddlex/              # Downloaded OCR models and PaddleX cache (not versioned)
 |-- tools/
+|   |-- windows_updater.ps1         # Stage, validate, back up and install release/main source packages
 |   |-- make_keybind_defaults.py    # Generate game keybinding defaults
 |   |-- make_templates.py           # Generate templates from local screenshots
 |   |-- capture_docs.py             # Capture documentation GUI scenes with isolated example data
@@ -120,6 +123,8 @@ EDFlightControl/
 |   |-- test_screenshots.py         # Optional full-screen regression tests
 |   |-- test_status.py              # Status parser tests
 |   |-- test_updates.py             # Update-check tests
+|   |-- test_update_gui.py          # Update opt-in, target selection and Info layout tests
+|   |-- test_windows_updater.py     # Offline Windows updater and recovery tests
 |   |-- test_version.py             # Version tests
 |   |-- test_waypoints.py           # Waypoint loading and progress tests
 |   |-- fixtures/                   # Test data and image crops
@@ -131,6 +136,7 @@ EDFlightControl/
 |   |-- Structure.md                # This codebase index and its conventions
 |   |-- Waypoint.md                 # Waypoint format and supported actions
 |   |-- Workflows.md                # Current assist behavior and follow-up items
+|   |-- Updates.md                  # Release/development updates and standalone recovery
 |   `-- screenshots/                # Images used in user documentation
 `-- .github/
     `-- workflows/
@@ -157,11 +163,15 @@ Elite Dangerous running; these tests send input to the game. Unit tests isolate 
 - `routines/` coordinates game state, panels, vision, and controls.
 - Lower-level packages must not import `gui/` or `routines/`.
 - Resolve application file paths through `core/paths.py`; keep runtime data in `user_data/`.
+- The updater's installation metadata, locks, recovery journal and program backups live in the ignored
+  `.update/` folder. `src/main.py` holds the same exclusive installation lock as the updater while EDFC runs;
+  startup refuses incomplete exchanges. See the [update guide](Updates.md) for supported update workflows.
 - Keep shipped defaults in `data/` or `assets/`; do not store them with runtime output.
 - Unit tests must not depend on an installed game or live game files; mock game-data readers or use temporary fixtures.
 - Resolve temporary test paths before comparing them with application paths: Windows short and long names can refer to the same directory.
 - Check GUI layout at 100%, 125% and 150% scaling, not only the current monitor's scaling.
 - Use lowercase `snake_case` for new Python modules and folders; avoid wildcard imports.
+- Use lowercase `snake_case` for batch launchers in the project root, such as `start_edfc.bat` and `update_edfc.bat`.
 - Add user-visible changes to the `Unreleased` section of `CHANGELOG.md`.
 - When preparing a release, keep an empty `Unreleased` section above the dated version section. The release
   workflow publishes only that version's notes, excluding other releases and the legacy changelog history.
@@ -176,7 +186,7 @@ On Windows, with the full runtime requirements installed, run from the project r
 venv\Scripts\python.exe tools\capture_docs.py
 ```
 
-The tool generates all ten images in `docs/screenshots/` using real GUI widgets, dummy services and temporary
+The tool generates all eleven images in `docs/screenshots/` using real GUI widgets, dummy services and temporary
 example routes. It does not start the autopilot engine, register hotkeys, check for updates, or load personal
 configuration, route progress or statistics. Technical logs go to a temporary directory. The existing shared OCR
 model cache is retained; no OCR is run. The status-overlay example uses the application's actual image renderer
@@ -265,4 +275,5 @@ maintainer approval; agreement on a name or permission to implement is not permi
 - [Keybindings](Keybindings.md): required Elite Dangerous actions and the fixer.
 - [Waypoint Assist](Waypoint.md): waypoint file format and supported workflows.
 - [Assist workflows](Workflows.md): current assist behavior and follow-up items.
+- [Updates](Updates.md): release/main channels, standalone updater, backups and recovery.
 - [Ship tuning](RollPitchYaw.md): calibrating per-ship rotation rates.

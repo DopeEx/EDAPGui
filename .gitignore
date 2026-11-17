@@ -1,5 +1,6 @@
 # Runtime and user data
 /user_data/
+/.update/
 
 # Python
 __pycache__/
