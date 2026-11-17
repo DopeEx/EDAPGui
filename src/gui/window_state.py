@@ -5,7 +5,7 @@ import json
 from core import paths
 from core.logger import logger
 
-DEFAULTS = {"x": None, "y": None, "collapsed": False, "topmost": False}
+DEFAULTS = {"x": None, "y": None, "collapsed": False, "topmost": False, "check_main": False}
 
 
 def load(file_name=None):

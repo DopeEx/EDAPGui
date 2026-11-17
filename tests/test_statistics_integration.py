@@ -228,15 +228,25 @@ class StatisticsIntegrationTests(unittest.TestCase):
             open_changelog=Mock(),
             report_bug=Mock(),
             check_updates=Mock(),
+            check_main=tk.BooleanVar(root, value=False),
+            installed_build_text=tk.StringVar(root, value="Installed: test"),
+            main_update_text=tk.StringVar(root, value="Not checked yet."),
+            install_update=Mock(),
+            toggle_main_updates=Mock(),
+            update_tag=None,
+            main_commit=None,
+            installed_build=None,
             open_download=Mock(),
-            refresh_update_button=Mock(),
             restart_program=Mock(),
             close_window=Mock(),
         )
+        app.refresh_update_button = lambda: APGui.refresh_update_button(app)
         build_info(app, page)
         root.update()
         for column in page.winfo_children():
             for card in column.winfo_children():
+                if not card.winfo_ismapped():
+                    continue
                 self.assertLessEqual(card.winfo_rooty() + card.winfo_height(), page.winfo_rooty() + page.winfo_height())
                 for widget in card.winfo_children():
                     self.assertLessEqual(

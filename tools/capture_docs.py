@@ -35,6 +35,7 @@ SCENES = (
     "overlay",
     "settings",
     "info",
+    "info_main",
     "collapsed",
 )
 TRADE_TEXT = """From Ohm City | LHS 20
@@ -248,6 +249,7 @@ def run(output: Path, preview: bool) -> None:
         import ttkbootstrap as ttk
 
         from core.commodities import get_localization
+        from core.updates import InstalledBuild, MainCommit
         from gui import main_window
         from gui.cv_view import CvFrames
         from gui.fields import DEFAULT_OVERLAY_LINE_ORDER
@@ -262,10 +264,12 @@ def run(output: Path, preview: bool) -> None:
                     "y": None,
                     "collapsed": False,
                     "topmost": False,
+                    "check_main": False,
                 },
             )
         )
         stack.enter_context(patch.object(main_window.window_state, "save"))
+        stack.enter_context(patch("core.updates.get_installed_build", return_value=None))
         stack.enter_context(patch.object(main_window, "MousePoint"))
         stack.enter_context(
             patch.object(
@@ -371,9 +375,22 @@ def run(output: Path, preview: bool) -> None:
                             "overlay": 2,
                             "settings": 3,
                             "info": len(app.tabs.tabs()) - 1,
+                            "info_main": len(app.tabs.tabs()) - 1,
                             "collapsed": 0,
                         }[scene]
                         app.tabs.select(tab)
+                        app.check_main.set(scene == "info_main")
+                        if scene == "info_main":
+                            app.installed_build = InstalledBuild(
+                                "main", "a" * 40, "2.0.0", "2026-11-16", "Prepare development-build testing"
+                            )
+                            app.installed_build_text.set("Installed: " + app.installed_build.describe())
+                            app.main_commit = MainCommit(
+                                "b" * 40, "2026-11-17", "Add optional development-build updates"
+                            )
+                            app.main_update_text.set("Available: " + app.main_commit.describe())
+                        app.refresh_update_button()
+                        app._show_update_notice()
                         if scene in ("waypoint_edit", "waypoint_buy"):
                             editor.begin_form(copy.deepcopy(document.data["waypoints"][0]), 0, False)
                             if scene == "waypoint_buy":

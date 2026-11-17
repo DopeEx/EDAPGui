@@ -134,7 +134,7 @@ class WindowStateTestCase(unittest.TestCase):
         self.assertEqual(window_state.load(self.file), window_state.DEFAULTS)
 
     def test_roundtrip(self):
-        state = {"x": 10, "y": -20, "collapsed": True, "topmost": True}
+        state = {"x": 10, "y": -20, "collapsed": True, "topmost": True, "check_main": True}
         window_state.save(state, self.file)
         self.assertEqual(window_state.load(self.file), state)
 
@@ -143,11 +143,12 @@ class WindowStateTestCase(unittest.TestCase):
         self.assertEqual(window_state.load(self.file), window_state.DEFAULTS)
 
     def test_wrong_types_are_ignored(self):
-        self.file.write_text(json.dumps({"x": "left", "collapsed": "yes", "topmost": True}))
+        self.file.write_text(json.dumps({"x": "left", "collapsed": "yes", "topmost": True, "check_main": "yes"}))
         state = window_state.load(self.file)
         self.assertIsNone(state["x"])
         self.assertFalse(state["collapsed"])
         self.assertTrue(state["topmost"])
+        self.assertFalse(state["check_main"])
 
 
 if __name__ == "__main__":

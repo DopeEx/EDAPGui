@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Install release updates from the Info tab or the standalone Windows updater without Git, preserving settings, routes and the Python environment, with program-file backups and interrupted-update recovery. Testers can opt in to main development builds; changed dependencies still require running `install_requirements.bat` manually.
+
 ### Fixed
 
 - Short supercruise disengage prompts are no longer rejected by a rigid total glyph count, preventing missed OCR checks and canceled readings as letter counts fluctuate.

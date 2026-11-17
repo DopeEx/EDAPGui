@@ -62,9 +62,11 @@ The sidebar can be collapsed, the window pinned on top, and settings are saved a
 
 The program stores its settings, ship profiles, waypoint files, route progress, statistics, logs, and debug output in `user_data/`.
 
-**Updating:** Close the program, back up `user_data/`, and extract the new program files into the existing installation
-folder, overwriting program files but keeping `user_data/` and `venv`. Startup does not update installed packages
-automatically; if dependencies have changed, run `install_requirements.bat`. Follow any additional release instructions.
+**Updating:** Use **Info > Install Update...**, or run `update_edfc.bat` with the program closed.
+The updater preserves `user_data/` and `venv`; changed dependencies still require running
+`install_requirements.bat` manually. Testers can opt in to main development builds on the Info tab.
+Manual downloads remain available on GitHub. The update guide under **Documentation** below covers channel
+selection, backups, recovery and updating an older installation that does not yet include the updater.
 
 **Moving to another folder:** Only when setting up a separate installation, copy your backed-up `user_data/` into it
 before the first start. Do not copy the old `venv`; let the starter create a new environment.
@@ -80,6 +82,7 @@ and run `install_requirements.bat`.
 - [Keybindings and automatic fixer](docs/Keybindings.md)
 - [Waypoint files, bookmarks, trading, and transfers](docs/Waypoint.md)
 - [Game languages and contributing language packs](docs/Localization.md)
+- [Updates and optional development builds](docs/Updates.md)
 - [Assist workflows, overlay, statistics and troubleshooting](docs/Workflows.md)
 - [Ship roll, pitch, and yaw tuning](docs/RollPitchYaw.md)
 - [Project structure and development conventions](docs/Structure.md)

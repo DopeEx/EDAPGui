@@ -6,7 +6,6 @@ import ctypes
 import json
 import os
 import queue
-import sys
 import threading
 import tkinter as tk
 import webbrowser
@@ -96,6 +95,7 @@ class APGui:
         self.theme = Theme(root, self.metrics)
 
         self.gui_loaded = False
+        self.restart_requested = False
         self.log_lines = deque(maxlen=2000)
         self.log_text = None
         self.ui_queue = queue.Queue()  # messages from other threads, handled by the GUI thread
@@ -120,6 +120,16 @@ class APGui:
         self.update_text = tk.StringVar(value="Not checked yet.")
         self.update_tag = None
         self.download_button = None
+        self.main_commit = None
+        self.main_update_button = None
+        self.main_updates_frame = None
+        self.main_update_text = tk.StringVar(value="Not checked yet.")
+        self.installed_build = updates.get_installed_build()
+        self.installed_build_text = tk.StringVar(
+            value="Installed: "
+            + (self.installed_build.describe() if self.installed_build else f"{EDFC_VERSION} (exact build unknown)")
+        )
+        self.update_check_id = 0
         self.statistics_text = tk.StringVar(value=self._statistics_text())
 
         self.TRAVEL_A_running = False
@@ -144,6 +154,7 @@ class APGui:
             self.vars[field.key].trace_add("write", lambda *args, f=field: self._on_var(f))
 
         self.state = window_state.load()
+        self.check_main = tk.BooleanVar(value=self.state["check_main"])
         self.collapsed = self.state["collapsed"]
         self.pinned = self.state["topmost"]
         self.status_text = "Idle"
@@ -289,6 +300,9 @@ class APGui:
         if self.update_tag:
             self.update_label.configure(text=f"Update available: {self.update_tag}")
             self.update_label.grid()
+        elif self.check_main.get() and updates.main_update_available(self.main_commit, self.installed_build):
+            self.update_label.configure(text="Development update available")
+            self.update_label.grid()
         else:
             self.update_label.grid_remove()
 
@@ -389,6 +403,15 @@ class APGui:
     def refresh_update_button(self):
         if self.download_button is not None and self.download_button.winfo_exists():
             self.download_button.set_disabled(not self.update_tag)
+        if self.main_update_button is not None and self.main_update_button.winfo_exists():
+            self.main_update_button.set_disabled(
+                not self.check_main.get() or not updates.main_update_available(self.main_commit, self.installed_build)
+            )
+        if self.main_updates_frame is not None and self.main_updates_frame.winfo_exists():
+            if self.check_main.get():
+                self.main_updates_frame.pack(fill="x", pady=(0, self.metrics.u(10)))
+            else:
+                self.main_updates_frame.pack_forget()
 
     # settings: loading, autosave
 
@@ -645,13 +668,19 @@ class APGui:
 
     def _save_window_state(self):
         window_state.save(
-            {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "collapsed": self.collapsed, "topmost": self.pinned}
+            {
+                "x": self.root.winfo_x(),
+                "y": self.root.winfo_y(),
+                "collapsed": self.collapsed,
+                "topmost": self.pinned,
+                "check_main": self.check_main.get(),
+            }
         )
 
     def close_window(self):
         logger.debug("Entered: close_window")
         if hasattr(self, "waypoint_editor") and not self.waypoint_editor.discard():
-            return
+            return False
         self._save_window_state()
         if self.hotkeys is not None:
             self.hotkeys.stop()
@@ -662,6 +691,7 @@ class APGui:
         self.ed_ap.quit()
         sleep(0.1)
         self.root.destroy()
+        return True
 
     # this routine is to stop any current autopilot activity
     def stop_all_assists(self):
@@ -753,22 +783,56 @@ class APGui:
         webbrowser.open_new(f"{updates.REPOSITORY_URL}/issues/new/choose")
 
     def check_updates(self, manual=True):
-        """Look for a newer release in the background. The result is shown on the Info tab."""
-        result = {}
+        """Check releases and, only when opted in, main without blocking Tk."""
+        self.update_check_id += 1
+        check_id = self.update_check_id
+        include_main = self.check_main.get()
+        result = {"tag": None, "main": None, "done": False}
 
         def worker():
-            result["tag"] = updates.get_latest_release()
-            result["done"] = True
+            try:
+                result["tag"] = updates.get_latest_release()
+                if include_main:
+                    result["main"] = updates.get_main_commit()
+            finally:
+                result["done"] = True
 
         def show_result():
+            if check_id != self.update_check_id:
+                return
             if not result.get("done"):
                 self.root.after(200, show_result)
                 return
             self._update_result(result["tag"], manual)
+            if include_main and self.check_main.get():
+                self._main_update_result(result["main"])
 
         self.update_text.set("Checking for updates...")
+        if include_main:
+            self.main_update_text.set("Checking development builds...")
         threading.Thread(target=worker, daemon=True).start()
         self.root.after(200, show_result)
+
+    def toggle_main_updates(self):
+        self.main_commit = None
+        self.main_update_text.set("Not checked yet.")
+        self._save_window_state()
+        self.refresh_update_button()
+        self._show_update_notice()
+        self.check_updates(manual=False)
+
+    def _main_update_result(self, commit):
+        self.main_commit = commit
+        if commit is None:
+            self.main_update_text.set("Could not check development builds. Please try again.")
+        else:
+            available = updates.main_update_available(commit, self.installed_build)
+            heading = "Available" if available else "Up to date"
+            self.main_update_text.set(f"{heading}: {commit.describe()}")
+            if available:
+                self.notify_user("A development build update is available, see the Info tab.")
+        self._show_update_notice()
+        self.refresh_update_button()
 
     def _update_result(self, tag, manual):
         if tag is not None and updates.is_newer(tag):
@@ -786,6 +850,34 @@ class APGui:
 
     def open_download(self):
         webbrowser.open_new(updates.LATEST_RELEASE_PAGE)
+
+    def install_update(self, channel="release"):
+        if channel == "main":
+            if not self.check_main.get() or not updates.main_update_available(self.main_commit, self.installed_build):
+                return
+            revision = self.main_commit.sha
+            description = f"Development build {revision[:8]} is unreleased and may contain bugs."
+        elif channel == "release" and self.update_tag:
+            revision = self.update_tag
+            description = f"Install release {revision}."
+        else:
+            return
+        if not messagebox.askokcancel(
+            "Update ED Flight Control",
+            f"{description}\n\nThe updater opens in a separate window. Finish any running assist and close EDFC "
+            "before it can replace program files.\n\nSettings, routes and the Python environment are kept unchanged. "
+            "Changed requirements must be installed manually when prompted.",
+            parent=self.root,
+        ):
+            return
+        try:
+            updates.launch_updater(channel, revision)
+        except (OSError, ValueError, RuntimeError) as error:
+            logger.warning(f"Could not start updater: {error}")
+            self.notify_user(f"Could not start updater: {error}")
+            messagebox.showerror("Could not start updater", str(error), parent=self.root)
+            return
+        self.notify_user("Updater opened. Close EDFC when ready to allow installation.")
 
     def open_changelog(self):
         webbrowser.open_new(f"{updates.REPOSITORY_URL}/blob/main/CHANGELOG.md")
@@ -879,19 +971,8 @@ class APGui:
 
     def restart_program(self):
         logger.debug("Entered: restart_program")
-        if hasattr(self, "waypoint_editor") and not self.waypoint_editor.discard():
-            return
-
-        self._save_window_state()
-        self.stop_travel()
-        self.cv_view.close()
-        self.ed_ap.quit()
-        sleep(0.1)
-
-        logger.info(f"Restarting: {sys.executable} {sys.argv}")
-        print("Restarting ED Flight Control...")
-
-        os.execv(sys.executable, ["python"] + sys.argv)
+        if self.close_window():
+            self.restart_requested = True
 
 
 def main():
@@ -913,6 +994,7 @@ def main():
     with window_icons(root, icon):
         root.deiconify()
         root.mainloop()
+    return app.restart_requested if app is not None else False
 
 
 if __name__ == "__main__":

@@ -297,24 +297,56 @@ def build_info(app, page):
     left, right = _columns(app, page)
     about = _card(app, left, "About")
     ttk.Label(about, text=f"ED Flight Control {EDFC_VERSION}").grid(row=0, column=0, sticky="w", pady=app.metrics.u(4))
-    _button(app, about, "Open GitHub Page", app.about, 1)
-    _button(app, about, "View Changelog", app.open_changelog, 2)
-    _button(app, about, "Report a bug", app.report_bug, 3)
+    for row, actions in (
+        (1, (("Open GitHub Page", app.about), ("View Changelog", app.open_changelog))),
+        (3, (("Restart", app.restart_program), ("Exit", app.close_window))),
+    ):
+        buttons = ttk.Frame(about)
+        buttons.grid(row=row, column=0, columnspan=2, sticky="ew")
+        buttons.columnconfigure((0, 1), weight=1, uniform="actions")
+        for column, (text, command) in enumerate(actions):
+            _button(app, buttons, text, command, 0).grid_configure(
+                column=column,
+                columnspan=1,
+                padx=(0, app.metrics.u(3)) if column == 0 else (app.metrics.u(3), 0),
+            )
+    _button(app, about, "Report a bug", app.report_bug, 2)
+
+    updates_card = _card(app, right, "Updates")
+    ttk.Label(updates_card, textvariable=app.update_text, wraplength=app.metrics.px(230)).grid(
+        row=0, column=0, sticky="w", pady=app.metrics.u(4)
+    )
+    _button(app, updates_card, "Check for Updates", app.check_updates, 1)
+    app.download_button = _button(app, updates_card, "Install Update...", app.install_update, 2)
+    _button(app, updates_card, "View on GitHub", app.open_download, 3)
+    development_check = ttk.Checkbutton(
+        updates_card,
+        text="Offer development builds\nfor testing",
+        variable=app.check_main,
+        command=app.toggle_main_updates,
+    )
+    development_check.grid(row=4, column=0, sticky="w", pady=app.metrics.u(4))
+    # Keep keyboard focus visible, but do not leave its ring behind after mouse clicks.
+    development_check.bind("<ButtonRelease-1>", lambda _event: development_check.after_idle(app.root.focus_set))
+
+    app.main_updates_frame = _card(app, right, "Development builds")
+    for row, variable in enumerate((app.installed_build_text, app.main_update_text)):
+        ttk.Label(app.main_updates_frame, textvariable=variable, justify="left", wraplength=app.metrics.px(230)).grid(
+            row=row, column=0, sticky="w", pady=app.metrics.u(4)
+        )
+    app.main_update_button = _button(
+        app,
+        app.main_updates_frame,
+        "Install Development Build...",
+        lambda: app.install_update("main"),
+        2,
+    )
+    app.refresh_update_button()
 
     statistics = _card(app, left, "Assist statistics")
     ttk.Label(statistics, textvariable=app.statistics_text, justify="left", wraplength=app.metrics.px(230)).grid(
         row=0, column=0, columnspan=2, sticky="w", pady=app.metrics.u(4)
     )
-
-    updates_card = _card(app, right, "Updates")
-    ttk.Label(updates_card, textvariable=app.update_text).grid(row=0, column=0, sticky="w", pady=app.metrics.u(4))
-    _button(app, updates_card, "Check for Updates", app.check_updates, 1)
-    app.download_button = _button(app, updates_card, "Download Update", app.open_download, 2)
-    app.refresh_update_button()
-
-    program = _card(app, right, "Program")
-    _button(app, program, "Restart", app.restart_program, 0)
-    _button(app, program, "Exit", app.close_window, 1)
     _page_layout(page)
 
 
