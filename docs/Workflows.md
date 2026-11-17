@@ -206,10 +206,21 @@ Recognition scores, message-gate measurements, OCR text and fallback attempts ar
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
 The supercruise message pre-check requires at least nine compact, glyph-sized cyan components overlapping the same
 horizontal scanline, at most 80 compact components overall, and the existing color-area and line checks.
+The existing bright-cyan mask is checked first. If it does not pass, a second mask on the same capture includes dim
+cyan-to-blue lettering (OpenCV HSV hue 88-110, saturation at least 60 and value at least 140), not just the brighter
+frame. Each mask must independently satisfy the same area, line and glyph-geometry requirements; measurements from
+different masks are not combined. Keeping the original mask first preserves prompts partly obscured by bright radar
+elements, where including dimmer pixels can merge otherwise separate letters.
 There is no separate 16-glyph minimum: short English prompts and letters merged by antialiasing can contain fewer
 components. This also prevents fluctuations between 13-16 otherwise aligned glyphs from canceling an in-flight OCR
 job. Sparse cockpit decorations, scattered HUD readouts and dense cyan noise remain rejected. If the message
 pre-check no longer passes, its job is still invalidated immediately; this is not a time-based grace period.
+In Debug mode, a passing-to-failing pre-check transition saves a `hud-disengage` case with reason `gate-lost`:
+the unmodified rejected crop (`evaluated`) and its `mask-bright` and `mask-dim` images. All three come from the
+same evaluated frame, without an additional capture. Only one case is saved per transition, not on every
+subsequent rejected check; the existing 50-case category limit applies. These images help distinguish an actually
+disappearing safe-exit prompt from a pre-check failure. A saved case does not itself prove that OCR had completed
+or that the safe-exit window remained open. Dropout decisions and OCR invalidation are unchanged.
 
 During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
 target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.
@@ -263,6 +274,23 @@ and is excluded from Git along with the rest of `user_data/`.
   itself still uses the original region. The larger capture is used only while Debug is enabled.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
+- Odyssey Galaxy Map name searches save full game-window snapshots in `user_data/debug/galaxy-map/` only for
+  failed checks, lost map focus or unconfirmed routes. Successful steps do not capture or save diagnostic images.
+  The debug log records the stage, requested system, attempt, game GUI focus and window-activation setting.
+  Opening the map waits up to 30 seconds for CARTOGRAPHICS using OCR. The keyboard search then uses Enter,
+  menu directions, select and camera zoom without reading the search name, result or plot prompt.
+  Map-focus checks remain active, but do not prove text-field focus. Plotting can start while the camera is moving.
+  The requested final destination in NavRoute.json confirms success.
+  An unconfirmed keyboard route switches to the OCR-checked mouse fallback. Its clicks use resolution-relative
+  regions and the captured monitor's desktop offset. Name comparisons ignore case and extra whitespace.
+  Mouse search-field entry has up to three attempts; the first result and the selected system card must match
+  before the plot button is clicked. There are at most three selection/plot attempts in total: one keyboard
+  attempt followed by up to two mouse attempts.
+  Failed mouse OCR checks save one image per expired wait, not for individual polling misses.
+  Each unconfirmed plot attempt saves `route-unconfirmed`; unavailable route data saves `route-unavailable`.
+  The failed check's image also covers a fallback or final failure; no extra image duplicates it.
+  Lost focus saves `focus-lost` and stops selection. The map is closed after success or exhausted attempts
+  if it is still active. The same 50-case category limit applies; technical text logging remains available.
 - An unconfirmed trade dialog saves its separately captured title and commodity regions and a later dialog context.
   OCR wait timeouts, unreadable or unmatched disengage OCR results, and ambiguous alignment or line-of-sight text
   can also save cases. Disengage mismatches save one case per continuous message-gate event, including when OCR
@@ -274,8 +302,12 @@ details before sharing them. Debug images are not captured or saved with Debug d
 compass and target captures can add overhead while debugging.
 
 Navigation destination selection accepts long, narrow filled row highlights without collapsing their corners during
-contour simplification. Thin lines and hollow outlines do not count as selected rows; the destination still requires
-an exact name match and confirmation from game state.
+contour simplification. If the usual approximation cannot supply four distinct corners, a single finer approximation
+is tried before rejecting the contour. This preserves perspective-slanted selections without changing already valid
+highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
+name match and confirmation from game state.
+Tall leading and trailing symbols are removed before the name-column crop, so a partially clipped station icon
+does not become a spurious OCR prefix. The crop boundaries and exact station-name comparison are unchanged.
 
 ### Other assists
 

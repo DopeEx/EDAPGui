@@ -850,6 +850,56 @@ class TargetTestCase(MatchingTestCase):
 
 
 class DisengageTestCase(MatchingTestCase):
+    def test_gate_loss_saves_the_rejected_frame_and_masks_once_per_transition(self):
+        regions = self.regions("message")
+        present = regions.screen.image
+        rejected = np.full_like(present, (7, 11, 13))
+        color = cv2.cvtColor(np.uint8([[[90, 150, 220]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(rejected, (0, 10), (rejected.shape[1] - 1, 10), color, 1)
+        later = np.full_like(present, (20, 30, 40))
+        detector = Detector()
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(paths, "DEBUG_DIR", Path(folder)),
+            patch.object(
+                regions.screen, "get_screen_region", side_effect=[present, rejected, later, present, rejected]
+            ) as capture,
+            self.assertLogs("ed_log", level="DEBUG"),
+        ):
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+            self.assertEqual(capture.call_count, 5)
+            cases = list((Path(folder) / "hud-disengage").glob("*_evaluated.png"))
+            self.assertEqual(len(cases), 2)
+            for case in cases:
+                np.testing.assert_array_equal(cv2.imread(str(case)), rejected)
+                for name, color_range in (
+                    ("mask-bright", regions.message_color_range),
+                    ("mask-dim", regions.message_dim_color_range),
+                ):
+                    mask_path = case.with_name(case.name.replace("_evaluated", f"_{name}"))
+                    np.testing.assert_array_equal(
+                        cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE),
+                        regions.filter_by_color(rejected, color_range),
+                    )
+
+    def test_gate_loss_has_no_diagnostic_capture_outside_debug(self):
+        detector = Detector()
+        regions = self.regions("message")
+        with (
+            patch("vision.detection.logger.isEnabledFor", return_value=False),
+            patch("vision.detection.save_case") as save,
+            patch.object(regions.screen, "get_screen_region", wraps=regions.screen.get_screen_region) as capture,
+        ):
+            self.assertTrue(detector.sc_disengage_label_up(regions))
+            regions.screen.image = np.zeros_like(regions.screen.image)
+            self.assertFalse(detector.sc_disengage_label_up(regions))
+        self.assertEqual(capture.call_count, 2)
+        save.assert_not_called()
+
     def test_message_gate_diagnostics_are_debug_only(self):
         with self.assertNoLogs("ed_log", level="INFO"):
             self.assertTrue(Detector().sc_disengage_label_up(self.regions("message")))
@@ -912,6 +962,51 @@ class DisengageTestCase(MatchingTestCase):
 
     def test_empty_screen_has_no_message(self):
         self.assertFalse(self.detect("sc_disengage_label_up", "empty"))
+
+    def test_dim_blue_lettering_with_bright_frame_passes_the_message_gate(self):
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                image = np.zeros((100 * scale, 200 * scale, 3), np.uint8)
+                frame = cv2.cvtColor(np.uint8([[[100, 200, 220]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+                lettering = cv2.cvtColor(np.uint8([[[106, 200, 150]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+                cv2.line(image, (0, 20 * scale), (150 * scale, 20 * scale), frame, scale)
+                for index in range(12):
+                    x = (10 + index * 10) * scale
+                    cv2.rectangle(image, (x, 35 * scale), (x + 2 * scale, 45 * scale), lettering, -1)
+                regions = ScreenRegions(FakeScreen(image), self.templates)
+                self.assertTrue(regions.message_text_present())
+                self.assertEqual(regions.last_message_row_glyphs, 12)
+
+                image[35 * scale : 46 * scale] = 0
+                for index in range(12):
+                    x = (10 + index % 4 * 30) * scale
+                    y = (35 + index // 4 * 20) * scale
+                    cv2.rectangle(image, (x, y), (x + 2 * scale, y + 8 * scale), lettering, -1)
+                self.assertFalse(regions.message_text_present())
+                self.assertEqual(regions.last_message_row_glyphs, 4)
+
+    def test_bright_prompt_keeps_priority_over_connected_dim_blue_pixels(self):
+        image = np.zeros((100, 200, 3), np.uint8)
+        bright = cv2.cvtColor(np.uint8([[[90, 200, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        dim = cv2.cvtColor(np.uint8([[[106, 200, 150]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 20), (150, 20), bright, 1)
+        for index in range(12):
+            x = 10 + index * 10
+            cv2.rectangle(image, (x, 35), (x + 2, 45), bright, -1)
+        cv2.line(image, (10, 40), (122, 40), dim, 1)
+        regions = ScreenRegions(FakeScreen(image), self.templates)
+        with patch.object(regions.screen, "get_screen_region", wraps=regions.screen.get_screen_region) as capture:
+            self.assertTrue(regions.message_text_present())
+        self.assertEqual(regions.last_message_row_glyphs, 12)
+        capture.assert_called_once()
+
+    def test_local_dim_blue_disengage_prompt_passes_the_message_gate(self):
+        path = FIXTURES / "screenshots" / "diagnostics" / "hud-disengage" / "mandalay-dim-blue-disengage_evaluated.png"
+        if not path.exists():
+            self.skipTest("local dim blue disengage prompt unavailable")
+        regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
+        self.assertTrue(regions.message_text_present())
+        self.assertGreaterEqual(regions.last_message_row_glyphs, regions.message_row_glyphs_min)
 
     def test_small_dropout_prompt_passes_the_message_gate(self):
         image = np.zeros((100, 100, 3), np.uint8)

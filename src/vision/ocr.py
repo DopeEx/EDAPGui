@@ -169,24 +169,28 @@ class OCR:
             fill_fraction = cv2.contourArea(contour) / (long_side * short_side)
             if fill_fraction < 0.65:
                 continue
-            polygon = cv2.approxPolyDP(contour, 0.015 * cv2.arcLength(contour, True), True)
-            # Perimeter-based simplification can collapse nearly rectangular, narrow rows into a line.
-            if len(polygon) != 4 and long_side / short_side >= 10 and fill_fraction >= 0.85:
-                polygon = cv2.boxPoints(rectangle).reshape(4, 1, 2)
-            if len(polygon) != 4 or not cv2.isContourConvex(polygon):
-                continue
-            points = polygon.reshape(4, 2).astype(np.float32)
-            sums = points.sum(axis=1)
-            differences = np.diff(points, axis=1).ravel()
-            corners = np.array(
-                [
-                    points[sums.argmin()],
-                    points[differences.argmin()],
-                    points[sums.argmax()],
-                    points[differences.argmax()],
-                ]
-            )
-            if len(np.unique(corners, axis=0)) != 4:
+            # Retry a finer approximation only if the usual one cannot provide four distinct corners.
+            for epsilon in (0.015, 0.01):
+                polygon = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
+                # Perimeter-based simplification can collapse nearly rectangular, narrow rows into a line.
+                if len(polygon) != 4 and long_side / short_side >= 10 and fill_fraction >= 0.85:
+                    polygon = cv2.boxPoints(rectangle).reshape(4, 1, 2)
+                if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+                    continue
+                points = polygon.reshape(4, 2).astype(np.float32)
+                sums = points.sum(axis=1)
+                differences = np.diff(points, axis=1).ravel()
+                corners = np.array(
+                    [
+                        points[sums.argmin()],
+                        points[differences.argmin()],
+                        points[sums.argmax()],
+                        points[differences.argmax()],
+                    ]
+                )
+                if len(np.unique(corners, axis=0)) == 4:
+                    break
+            else:
                 continue
             width = int(max(np.linalg.norm(corners[1] - corners[0]), np.linalg.norm(corners[2] - corners[3])))
             height = int(max(np.linalg.norm(corners[3] - corners[0]), np.linalg.norm(corners[2] - corners[1])))

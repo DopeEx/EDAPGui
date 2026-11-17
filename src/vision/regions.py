@@ -122,8 +122,9 @@ class ScreenRegions:
         self.tan_color_range = [array([8, 40, 150]), array([30, 140, 255])]
         self.blue_color_range = [array([0, 28, 170]), array([180, 100, 255])]
         self.blue_sco_color_range = [array([10, 0, 0]), array([100, 150, 255])]
-        # Cyan of the HUD messages, saturated in dark scenes and pale when overexposed
         self.message_color_range = [array([88, 60, 170]), array([102, 255, 255])]
+        # Cyan-to-blue HUD lettering can be dimmer and bluer than its frame.
+        self.message_dim_color_range = [array([88, 60, 140]), array([110, 255, 255])]
 
         self.reg = {}
         # regions with associated filter and color ranges
@@ -342,37 +343,42 @@ class ScreenRegions:
         # H must be the best match
         return img_region, (minVal_h, maxVal_h, minLoc_h, maxLoc_h), match_h
 
-    def message_text_present(self, region_name="disengage") -> bool:
+    def message_text_present(self, region_name="disengage", source_callback=None) -> bool:
         """Cheap, language independent check if a (cyan) HUD message is shown in the message region.
         The OCR is only needed when this is True."""
         img = self.screen.get_screen_region(self.reg[region_name]["rect"], rgb=False)[:, :, :3]
-        mask = self.filter_by_color(img, self.message_color_range) > 0
-        self.last_message_fraction = float(mask.mean())
-        self.last_message_line = float(mask.mean(axis=1).max())
-        _, _, stats, _ = cv2.connectedComponentsWithStats(mask.astype("uint8"), connectivity=8)
-        components = stats[1:]
-        widths = components[:, cv2.CC_STAT_WIDTH]
-        heights = components[:, cv2.CC_STAT_HEIGHT]
-        glyph_components = (
-            (widths >= 0.003 * mask.shape[1])
-            & (widths <= 0.09 * mask.shape[1])
-            & (heights >= 0.015 * mask.shape[0])
-            & (heights <= 0.20 * mask.shape[0])
-            & (widths / heights >= 0.05)
-            & (widths / heights <= 3.0)
-        )
-        self.last_message_glyph_components = int(sum(glyph_components))
-        glyphs = components[glyph_components]
-        row_counts = zeros(mask.shape[0] + 1, dtype=int)
-        add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP], 1)
-        add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP] + glyphs[:, cv2.CC_STAT_HEIGHT], -1)
-        self.last_message_row_glyphs = int(cumsum(row_counts).max())
-        return (
-            self.last_message_fraction >= self.message_text_fraction
-            and self.last_message_line >= self.message_line_fraction
-            and self.last_message_glyph_components <= self.message_glyph_components_max
-            and self.last_message_row_glyphs >= self.message_row_glyphs_min
-        )
+        if source_callback is not None:
+            source_callback(img)
+        for color_range in (self.message_color_range, self.message_dim_color_range):
+            mask = self.filter_by_color(img, color_range) > 0
+            self.last_message_fraction = float(mask.mean())
+            self.last_message_line = float(mask.mean(axis=1).max())
+            _, _, stats, _ = cv2.connectedComponentsWithStats(mask.astype("uint8"), connectivity=8)
+            components = stats[1:]
+            widths = components[:, cv2.CC_STAT_WIDTH]
+            heights = components[:, cv2.CC_STAT_HEIGHT]
+            glyph_components = (
+                (widths >= 0.003 * mask.shape[1])
+                & (widths <= 0.09 * mask.shape[1])
+                & (heights >= 0.015 * mask.shape[0])
+                & (heights <= 0.20 * mask.shape[0])
+                & (widths / heights >= 0.05)
+                & (widths / heights <= 3.0)
+            )
+            self.last_message_glyph_components = int(sum(glyph_components))
+            glyphs = components[glyph_components]
+            row_counts = zeros(mask.shape[0] + 1, dtype=int)
+            add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP], 1)
+            add.at(row_counts, glyphs[:, cv2.CC_STAT_TOP] + glyphs[:, cv2.CC_STAT_HEIGHT], -1)
+            self.last_message_row_glyphs = int(cumsum(row_counts).max())
+            if (
+                self.last_message_fraction >= self.message_text_fraction
+                and self.last_message_line >= self.message_line_fraction
+                and self.last_message_glyph_components <= self.message_glyph_components_max
+                and self.last_message_row_glyphs >= self.message_row_glyphs_min
+            ):
+                return True
+        return False
 
     def message_image(self, region_name="disengage", raw=False, upscale=1):
         """Return the message region as a BGR image with everything but the HUD message text blacked out,

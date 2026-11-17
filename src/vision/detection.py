@@ -675,13 +675,18 @@ class DetectionMixin:
         The aim of this function is to return that a message is there, and then use OCR to determine
         what the message is. This will only use the high CPU usage OCR when necessary.
         The check uses message-colored pixels and glyph-row geometry rather than language-specific text."""
-        text_present = scr_reg.message_text_present("disengage")
+        was_present = getattr(self, "_message_was_present", False)
+        captured = []
+        text_present = scr_reg.message_text_present(
+            "disengage",
+            source_callback=(lambda image: captured.append(image.copy()))
+            if was_present and logger.isEnabledFor(logging.DEBUG)
+            else None,
+        )
 
         # Heartbeat every 5 s, so the log shows that the check runs and how much message-colored area it sees
         now = time.monotonic()
-        if now - getattr(self, "_message_log_time", 0.0) >= 5.0 or text_present != getattr(
-            self, "_message_was_present", False
-        ):
+        if now - getattr(self, "_message_log_time", 0.0) >= 5.0 or text_present != was_present:
             self._message_log_time = now
             fraction = getattr(scr_reg, "last_message_fraction", 0.0)
             line = getattr(scr_reg, "last_message_line", 0.0)
@@ -696,11 +701,22 @@ class DetectionMixin:
             )
 
         # Log only when a message appears, so the log shows whether the detection saw it
-        if text_present != getattr(self, "_message_was_present", False):
+        if text_present != was_present:
             self._message_was_present = text_present
             self._disengage_mismatch_saved = False
             if text_present:
                 logger.debug("HUD message text detected in the disengage region, reading it with OCR.")
+            elif captured:
+                image = captured[0]
+                save_case(
+                    "hud-disengage",
+                    "gate-lost",
+                    {
+                        "evaluated": image,
+                        "mask-bright": scr_reg.filter_by_color(image, scr_reg.message_color_range),
+                        "mask-dim": scr_reg.filter_by_color(image, scr_reg.message_dim_color_range),
+                    },
+                )
         if self.cv_frames.is_open("hud"):
             dis_image = scr_reg.message_image("disengage").copy()
             dis_image = cv2.rectangle(dis_image, (0, 0), (1000, 25), (0, 0, 0), -1)

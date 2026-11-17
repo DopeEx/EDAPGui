@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from time import monotonic, sleep
 
-from pyautogui import typewrite
+from pyautogui import hotkey, typewrite
 
+from controls.mouse_point import MousePoint
 from core.constants import GuiFocusGalaxyMap
 from core.logger import logger
 from game.status import StatusParser
+from vision.diagnostics import save_case
 from vision.regions import reg_scale_for_station
+from vision.screen import dpi_aware, set_focus_elite_window
 
 MAX_NAV_ROUTE_PLOT_ATTEMPTS = 3
 NAV_ROUTE_UPDATE_POLL_INTERVAL = 0.25
 NAV_ROUTE_UPDATE_TIMEOUT = 15.0
+MAX_SEARCH_ENTRY_ATTEMPTS = 3
+SEARCH_ENTRY_CONFIRM_TIMEOUT = 3.0
+SEARCH_RESULT_TIMEOUT = 10.0
 
 
 class EDGalaxyMap:
@@ -25,12 +32,180 @@ class EDGalaxyMap:
         self.is_odyssey = is_odyssey
         self.screen = screen
         self.keys = keys
+        self.mouse = MousePoint()
         self.status_parser = StatusParser()
         self.ap_ckb = cb
         # The rect is top left x, y, and bottom right x, y in fraction of screen resolution
         self.reg = {
             "cartographics": {"rect": [0.0, 0.0, 0.25, 0.25]},
+            "search": {"rect": [0.36, 0.10, 0.605, 0.132]},
+            "first-result": {"rect": [0.379, 0.134, 0.60, 0.159]},
+            "selected-system": {"rect": [0.70, 0.195, 0.925, 0.225]},
+            "plot-route": {"rect": [0.935, 0.539, 0.957, 0.582]},
         }
+
+    def _save_search_debug(self, stage: str, target_name: str | None = None, attempt: int | None = None) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        image = self.screen.get_screen_full()
+        logger.debug(
+            "Galaxy Map search snapshot: stage=%s target=%r attempt=%s gui_focus=%s activate_window=%s",
+            stage,
+            target_name,
+            attempt,
+            self.status_parser.get_gui_focus(),
+            self.keys.activate_window,
+        )
+        save_case("galaxy-map", stage, {"map": image})
+
+    def _search_field_matches(self, target_name: str) -> bool:
+        return self._region_matches("search", target_name)
+
+    def _region_text(self, region: str) -> str:
+        image = self.ocr.capture_region_pct(self.reg[region])
+        return " ".join(" ".join(self.ocr.image_simple_ocr(image) or []).upper().split())
+
+    def _region_matches(self, region: str, target_name: str) -> bool:
+        recognized = self._region_text(region)
+        expected = " ".join(target_name.upper().split())
+        matched = bool(expected) and recognized == expected
+        logger.debug(
+            "Galaxy Map OCR: region=%s expected=%r recognized=%r matched=%s", region, expected, recognized, matched
+        )
+        return matched
+
+    def _region_center(self, region: str) -> tuple[int, int]:
+        left, top, right, bottom = self.screen.screen_rect_to_abs(self.reg[region]["rect"])
+        x = self.screen.mon["left"] + (left + right) // 2
+        y = self.screen.mon["top"] + (top + bottom) // 2
+        return x, y
+
+    def _click_region(self, region: str) -> None:
+        x, y = self._region_center(region)
+        if self.keys.activate_window:
+            set_focus_elite_window()
+        logger.debug("Galaxy Map click: region=%s x=%s y=%s", region, x, y)
+        with dpi_aware():
+            self.mouse.do_click(x, y)
+
+    def _wait_for_first_result(self, target_name: str, attempt: int) -> bool:
+        deadline = monotonic() + SEARCH_RESULT_TIMEOUT
+        while monotonic() < deadline:
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; result selection stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+            if self._region_matches("first-result", target_name):
+                return True
+            sleep(0.25)
+        else:
+            self._save_search_debug("first-result-unconfirmed", target_name, attempt)
+            logger.warning("Galaxy Map first result did not confirm %s.", target_name)
+            return False
+
+    def _select_first_result(self, target_name: str, attempt: int) -> bool:
+        if not self._wait_for_first_result(target_name, attempt):
+            return False
+        if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+            logger.warning("Galaxy Map is not active; result click stopped.")
+            self._save_search_debug("focus-lost", target_name, attempt)
+            return False
+        self._click_region("first-result")
+        sleep(0.25)
+        deadline = monotonic() + SEARCH_RESULT_TIMEOUT
+        while monotonic() < deadline:
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; selected-system check stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+            if self._region_matches("selected-system", target_name):
+                break
+            sleep(0.25)
+        else:
+            self._save_search_debug("selected-system-unconfirmed", target_name, attempt)
+            logger.warning("Galaxy Map system information did not confirm %s.", target_name)
+            return False
+
+        return True
+
+    def _enter_system_name_keyboard(self, target_name: str) -> bool:
+        if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+            logger.warning("Galaxy Map is not active; keyboard search stopped.")
+            self._save_search_debug("focus-lost", target_name, 1)
+            return False
+        self.keys.send("UI_Up")
+        self.keys.send("UI_Select")
+        sleep(0.2)
+        if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+            logger.warning("Galaxy Map is not active; keyboard text entry stopped.")
+            self._save_search_debug("focus-lost", target_name, 1)
+            return False
+        hotkey("ctrl", "a")
+        typewrite(target_name, interval=0.25)
+        sleep(0.2)
+        return True
+
+    def _select_first_result_keyboard(self, target_name: str, attempt: int) -> bool:
+        if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+            logger.warning("Galaxy Map is not active; keyboard result selection stopped.")
+            self._save_search_debug("focus-lost", target_name, attempt)
+            return False
+        self.keys.send_key("Down", 28)
+        sleep(0.05)
+        self.keys.send_key("Up", 28)
+        sleep(0.25)
+
+        for key, delay in (
+            ("UI_Down", 0.05),
+            ("UI_Up", 0.05),
+            ("UI_Right", 0.05),
+            ("UI_Select", 0.5),
+            ("CamZoomIn", 0.05),
+        ):
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; keyboard navigation stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+            self.keys.send(key)
+            sleep(delay)
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; keyboard navigation stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+
+        return True
+
+    def _enter_system_name(self, target_name: str) -> bool:
+        for attempt in range(1, MAX_SEARCH_ENTRY_ATTEMPTS + 1):
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; system-name entry stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+            self._click_region("search")
+            sleep(0.2)
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; system-name entry stopped.")
+                self._save_search_debug("focus-lost", target_name, attempt)
+                return False
+            hotkey("ctrl", "a")
+            typewrite(target_name, interval=0.25)
+            sleep(0.2)
+
+            deadline = monotonic() + SEARCH_ENTRY_CONFIRM_TIMEOUT
+            while monotonic() < deadline:
+                if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                    logger.warning("Galaxy Map is not active; search confirmation stopped.")
+                    self._save_search_debug("focus-lost", target_name, attempt)
+                    return False
+                if self._search_field_matches(target_name):
+                    return True
+                sleep(0.25)
+            self._save_search_debug("search-text-unconfirmed", target_name, attempt)
+
+        logger.warning(
+            "Unable to confirm Galaxy Map search text for %s after %s attempts.", target_name, MAX_SEARCH_ENTRY_ATTEMPTS
+        )
+        return False
 
     def set_gal_map_dest_bookmark(
         self,
@@ -150,57 +325,46 @@ class EDGalaxyMap:
         last_nav_route_sys = ap.nav_route.get_last_system()
         last_nav_route_sys_uc = last_nav_route_sys.upper()
         if last_nav_route_sys_uc == target_name_uc:
-            # Close Galaxy map
-            ap.keys.send("GalaxyMapOpen")
+            if self.status_parser.get_gui_focus() == GuiFocusGalaxyMap:
+                ap.keys.send("GalaxyMapOpen")
             return True
-
-        # navigate to and select: search field
-        ap.keys.send("UI_Up")
-        sleep(0.05)
-        ap.keys.send("UI_Select")
-        sleep(0.05)
-
-        # type in the System name
-        typewrite(target_name_uc, interval=0.25)
-        logger.debug(f"Entered system name: {target_name_uc}.")
-        sleep(0.05)
-
-        # send enter key (removes focus out of input field)
-        ap.keys.send_key("Down", 28)  # 28=ENTER
-        sleep(0.05)
-        ap.keys.send_key("Up", 28)  # 28=ENTER
-        sleep(0.05)
-
-        # According to some reports, the ENTER key does not always reselect the text
-        # box, so this down and up will reselect the text box.
-        ap.keys.send("UI_Down")
-        sleep(0.05)
-        ap.keys.send("UI_Up")
-        sleep(0.05)
-
-        # navigate to and select: search button
-        ap.keys.send("UI_Right")  # to >| button
-        sleep(0.05)
 
         correct_route = False
         for attempt in range(1, MAX_NAV_ROUTE_PLOT_ATTEMPTS + 1):
+            keyboard = attempt == 1
+            if keyboard:
+                if not self._enter_system_name_keyboard(target_name_uc):
+                    if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                        break
+                    continue
+                if not self._select_first_result_keyboard(target_name_uc, attempt):
+                    if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                        break
+                    continue
+            else:
+                if not self._enter_system_name(target_name_uc):
+                    break
+                if not self._select_first_result(target_name_uc, attempt):
+                    if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                        break
+                    continue
             # Store the current nav route system
             last_nav_route_sys = ap.nav_route.get_last_system()
             last_nav_route_sys_uc = last_nav_route_sys.upper()
             logger.debug(f"Previous Nav Route dest: {last_nav_route_sys_uc}.")
+            if last_nav_route_sys_uc == target_name_uc:
+                logger.debug("Galaxy Map route confirmed before another plot request.")
+                correct_route = True
+                break
 
-            # Select first (or next) system
-            ap.keys.send("UI_Select")  # Select >| button
-            sleep(0.5)
-
-            # zoom camera which puts focus back on the map
-            ap.keys.send("CamZoomIn")
-            sleep(0.05)
-
-            # plot route. Not that once the system has been selected, as shown in the info panel
-            # and the gal map has focus, there is no need to wait for the map to bring the system
-            # to the center screen, the system can be selected while the map is moving.
-            ap.keys.send("UI_Select", hold=0.75)
+            if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                logger.warning("Galaxy Map is not active; route plotting stopped.")
+                self._save_search_debug("focus-lost", target_name_uc, attempt)
+                break
+            if keyboard:
+                self.keys.send("UI_Select", hold=0.75)
+            else:
+                self._click_region("plot-route")
 
             sleep(0.05)
 
@@ -235,25 +399,23 @@ class EDGalaxyMap:
                             break
                     sleep(NAV_ROUTE_UPDATE_POLL_INTERVAL)
             else:
-                # Cannot check route, so assume right
-                logger.debug("Unable to check Nav Route, so assuming it is correct.")
-                correct_route = True
+                logger.warning("Unable to verify Galaxy Map route: NavRoute data is unavailable.")
+                self._save_search_debug("route-unavailable", target_name_uc, attempt)
+                break
 
             if correct_route:
                 break
 
+            self._save_search_debug("route-unconfirmed", target_name_uc, attempt)
             if not route_changed:
                 logger.debug(
                     f"Nav Route did not update within {NAV_ROUTE_UPDATE_TIMEOUT:g} seconds "
                     f"(attempt {attempt}/{MAX_NAV_ROUTE_PLOT_ATTEMPTS})."
                 )
 
-            if attempt < MAX_NAV_ROUTE_PLOT_ATTEMPTS:
-                ap.keys.send("UI_Up")
-                sleep(0.25)
-
         # Close Galaxy map
-        ap.keys.send("GalaxyMapOpen")
+        if self.status_parser.get_gui_focus() == GuiFocusGalaxyMap:
+            ap.keys.send("GalaxyMapOpen")
         sleep(0.5)
         if not correct_route:
             logger.warning(

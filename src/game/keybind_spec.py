@@ -47,6 +47,18 @@ REQUIRED_ACTIONS: dict[str, str] = {
 # Keys EDFC itself listens to. They are named the same in every keyboard layout.
 EDFC_HOTKEYS = ("Key_End", "Key_Insert", "Key_PageUp", "Key_Home")
 
+GALAXY_MAP_MENU_DIRECTIONS = frozenset(("UI_Up", "UI_Down", "UI_Left", "UI_Right"))
+GALAXY_MAP_TRANSLATIONS = frozenset(
+    ("CamTranslateForward", "CamTranslateBackward", "CamTranslateLeft", "CamTranslateRight")
+)
+
+
+def is_galaxy_map_navigation_conflict(action: str, other: str) -> bool:
+    return (action in GALAXY_MAP_MENU_DIRECTIONS and other in GALAXY_MAP_TRANSLATIONS) or (
+        other in GALAXY_MAP_MENU_DIRECTIONS and action in GALAXY_MAP_TRANSLATIONS
+    )
+
+
 # Keys proposed for actions the shipped presets leave unbound: single keys without modifiers, no letters or
 # punctuation, because those are named differently depending on the keyboard layout.
 PREFERRED_KEYS: dict[str, tuple[str, ...]] = {

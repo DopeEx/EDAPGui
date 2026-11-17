@@ -219,6 +219,38 @@ class StationServicesScreenshotTestCase(unittest.TestCase):
 
 @skipUnless(OCR is not None and GALAXY_MAP_SCREENSHOTS, "PaddleOCR or local galaxy-map screenshots unavailable")
 class GalaxyMapScreenshotTestCase(unittest.TestCase):
+    def test_search_field_text_matches_only_the_complete_requested_system(self):
+        ocr = OCR(screen=None)
+        for path in GALAXY_MAP_SCREENSHOTS:
+            with self.subTest(screenshot=path.name):
+                ocr.screen = ScreenshotScreen(load_screenshot(path))
+                galaxy = EDGalaxyMap.__new__(EDGalaxyMap)
+                galaxy.ocr = ocr
+                galaxy.reg = {"search": {"rect": [0.36, 0.10, 0.605, 0.132]}}
+                entered = "search-entered-arcadian" in path.stem
+                lhs = "first-result-lhs20" in path.stem
+                self.assertEqual(galaxy._search_field_matches("ARCADIAN"), entered)
+                self.assertFalse(galaxy._search_field_matches("ARCADIA"))
+                text = " ".join(ocr.image_simple_ocr(ocr.capture_region_pct(galaxy.reg["search"])) or []).upper()
+                self.assertIn("ARCADIAN" if entered else "LHS" if lhs else "GALAXIE DURCHSUCHEN", text)
+
+    def test_first_result_is_exact_even_with_similar_systems_below(self):
+        ocr = OCR(screen=None)
+        tested = False
+        for path in GALAXY_MAP_SCREENSHOTS:
+            if "first-result-lhs20" not in path.stem:
+                continue
+            tested = True
+            with self.subTest(screenshot=path.name):
+                ocr.screen = ScreenshotScreen(load_screenshot(path))
+                galaxy = EDGalaxyMap.__new__(EDGalaxyMap)
+                galaxy.ocr = ocr
+                galaxy.reg = {"first-result": {"rect": [0.379, 0.134, 0.60, 0.159]}}
+                self.assertTrue(galaxy._region_matches("first-result", "LHS 20"))
+                self.assertFalse(galaxy._region_matches("first-result", "LHS 200"))
+        if not tested:
+            self.skipTest("local first-result screenshots unavailable")
+
     def test_map_opening_header_is_recognized_on_first_poll_in_both_colors(self):
         ocr = OCR(screen=None)
         for path in GALAXY_MAP_SCREENSHOTS:

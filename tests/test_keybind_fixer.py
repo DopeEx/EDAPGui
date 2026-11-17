@@ -143,6 +143,46 @@ class PlanTestCase(unittest.TestCase):
 
         self.assertNotIn("SetSpeedZero", changes_by_action(plan_for(file)))
 
+    def test_map_translation_conflicts_with_any_menu_direction_even_when_shared_by_defaults(self):
+        for ui, camera, keyboard in (
+            ("UI_Up", "CamTranslateForward", "Key_W"),
+            ("UI_Down", "CamTranslateBackward", "Key_S"),
+            ("UI_Left", "CamTranslateLeft", "Key_A"),
+            ("UI_Right", "CamTranslateRight", "Key_D"),
+            ("UI_Up", "CamTranslateLeft", "Key_W"),
+        ):
+            with self.subTest(ui=ui, camera=camera):
+                file = make_file({ui: (key(keyboard), FREE), camera: (key(keyboard), FREE)})
+                change = changes_by_action(plan_for(file))[ui]
+                self.assertEqual((change.kind, change.partners), (CONFLICT, (camera,)))
+
+    def test_modified_map_translation_does_not_conflict_with_plain_menu_key(self):
+        file = make_file({"UI_Up": (key("Key_W"), FREE), "CamTranslateForward": (key("Key_W", "Key_LeftShift"), FREE)})
+        self.assertNotIn("UI_Up", changes_by_action(plan_for(file)))
+
+    def test_map_conflict_is_found_in_general_preset_when_ship_preset_differs(self):
+        general = make_file({"UI_Up": (key("Key_W"), FREE), "CamTranslateForward": (key("Key_W"), FREE)})
+        ship = make_file({"CamTranslateForward": (key("Key_W", "Key_LeftShift"), FREE)})
+        change = changes_by_action(build_plan({"general": general, "ship": ship}))["UI_Up"]
+        self.assertEqual((change.kind, change.partners), (CONFLICT, ("CamTranslateForward",)))
+
+    def test_map_conflict_checks_effective_menu_slot_and_both_camera_slots(self):
+        file = make_file(
+            {
+                "UI_Up": (key("Key_Q"), key("Key_W", slot="Secondary")),
+                "CamTranslateForward": (key("Key_T"), key("Key_W", slot="Secondary")),
+            }
+        )
+        change = changes_by_action(plan_for(file))["UI_Up"]
+        self.assertEqual((change.slot, change.partners), ("Secondary", ("CamTranslateForward",)))
+        fixed = BindsFile(file.path, apply_changes(file, [change]))
+        self.assertNotIn("UI_Up", changes_by_action(plan_for(fixed)))
+
+    def test_map_gamepad_does_not_conflict_with_keyboard_menu_key(self):
+        gamepad = '<Primary Device="GamePad" Key="Key_W" />'
+        file = make_file({"UI_Up": (key("Key_W"), FREE), "CamTranslateForward": (gamepad, FREE)})
+        self.assertNotIn("UI_Up", changes_by_action(plan_for(file)))
+
     def test_conflict_moves_the_less_important_action(self):
         file = make_file(
             {

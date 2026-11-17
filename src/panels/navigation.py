@@ -126,8 +126,8 @@ class EDNavigationPanel:
     def _destination_name_image(row):
         """Isolate the name column of an already rectified highlighted destination."""
         height, width = row.shape[:2]
-        # The highlight starts at the object icon, after the separate action-icon column.
-        image = row[:, int(width * 0.04) : int(width * 0.86)].copy()
+        # Keep the complete leading symbol until its component height has been measured.
+        image = row[:, : int(width * 0.86)].copy()
         background = np.median(image.reshape(-1, 3), axis=0).astype(np.uint8)
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         markers = cv2.inRange(hsv, (35, 80, 40), (140, 255, 255))
@@ -140,7 +140,7 @@ class EDNavigationPanel:
             # Map pins and shields extend beyond the text line; do not OCR them as letters.
             if stats[label, cv2.CC_STAT_HEIGHT] > height * 0.65:
                 image[labels == label] = background
-        return image[int(height * 0.15) : int(height * 0.85)]
+        return image[int(height * 0.15) : int(height * 0.85), int(width * 0.04) :]
 
     def _next_destination(self, previous: str, deadline: float) -> str | None:
         self.keys.send("UI_Down")
