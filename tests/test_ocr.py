@@ -78,6 +78,25 @@ class OcrConcurrencyTestCase(unittest.TestCase):
 
 
 class HighlightTestCase(unittest.TestCase):
+    def test_local_slanted_navigation_rows_keep_four_distinct_corners(self):
+        folder = paths.ROOT / "tests" / "fixtures" / "screenshots" / "diagnostics" / "navigation-slanted-20261117"
+        images = sorted(folder.glob("*_evaluated.png"))
+        if not images:
+            self.skipTest("local slanted navigation rows unavailable")
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        for path in images:
+            with self.subTest(screenshot=path.name):
+                image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                items = ocr.solid_highlighted_items(image, 350, 25)
+                self.assertEqual(len(items), 1)
+                row, x, y, width, height = items[0]
+                self.assertGreater(row.shape[1], 750)
+                self.assertGreaterEqual(row.shape[0], 25)
+                self.assertGreater(x, 290)
+                self.assertLess(y, 40)
+                self.assertGreater(width, 750)
+                self.assertLess(height, 100)
+
     def test_system_tab_near_the_left_edge_is_not_clipped(self):
         from panels.navigation import EDNavigationPanel
         from tests.helpers import ScreenshotScreen
@@ -217,6 +236,45 @@ class HighlightTestCase(unittest.TestCase):
 
 @unittest.skipIf(OCR is None, "PaddleOCR is not installed")
 class OCRTestCase(unittest.TestCase):
+    def test_local_station_symbol_does_not_add_a_name_prefix(self):
+        from panels.navigation import EDNavigationPanel
+        from tests.helpers import load_screenshot
+
+        path = (
+            paths.ROOT
+            / "tests"
+            / "fixtures"
+            / "screenshots"
+            / "diagnostics"
+            / "navigation-symbol-20261117"
+            / "navigation-station-symbol_evaluated.png"
+        )
+        if not path.exists():
+            self.skipTest("local station-symbol navigation crop unavailable")
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = Mock(screen_width=1920, screen_height=1080)
+        panel.ocr = OCR(screen=None)
+        panel.ocr.capture_region_pct = Mock(return_value=load_screenshot(path))
+        self.assertEqual(panel._selected_destination(), "OHM CITY")
+
+    def test_local_slanted_navigation_destination_reaches_name_ocr(self):
+        from panels.navigation import EDNavigationPanel
+
+        folder = paths.ROOT / "tests" / "fixtures" / "screenshots" / "diagnostics" / "navigation-slanted-20261117"
+        images = sorted(folder.glob("*_evaluated.png"))
+        if not images:
+            self.skipTest("local slanted navigation rows unavailable")
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = Mock(screen_width=1920, screen_height=1080)
+        panel.ocr = OCR(screen=None)
+        for path in images:
+            with self.subTest(screenshot=path.name):
+                image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                panel.ocr.capture_region_pct = Mock(return_value=image)
+                with patch.object(panel, "_save_recognition_failure") as failure:
+                    self.assertEqual(panel._selected_destination(), "ROCKWELL PROSPECT")
+                failure.assert_not_called()
+
     def test_disengage_engine_can_be_reused_on_background_threads(self):
         from vision.disengage import DisengageWorker
 

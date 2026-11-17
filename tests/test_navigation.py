@@ -167,6 +167,19 @@ class NavigationDiagnosticTestCase(unittest.TestCase):
 
 
 class DestinationNameImageTestCase(unittest.TestCase):
+    def test_leading_symbol_is_removed_before_column_crop_clips_its_height(self):
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                row = np.full((80 * scale, 1600 * scale, 3), 255, dtype=np.uint8)
+                symbol = np.array([[45, 5], [85, 40], [45, 75], [5, 40]], np.int32) * scale
+                cv2.polylines(row, [symbol], True, (0, 0, 0), 3 * scale)
+                cv2.rectangle(row, (90 * scale, 25 * scale), (100 * scale, 50 * scale), (0, 0, 0), -1)
+                before = row.copy()
+                crop = EDNavigationPanel._destination_name_image(row)
+                self.assertTrue(np.all(crop[:, : 24 * scale] == 255))
+                self.assertTrue(np.all(crop[13 * scale : 38 * scale + 1, 26 * scale : 36 * scale + 1] == 0))
+                np.testing.assert_array_equal(row, before)
+
     def test_selected_destination_reads_only_name_crop_and_preserves_numeric_name(self):
         row = np.full((80, 1600, 3), 255, dtype=np.uint8)
         panel = EDNavigationPanel.__new__(EDNavigationPanel)

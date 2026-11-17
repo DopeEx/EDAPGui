@@ -291,8 +291,12 @@ details before sharing them. Debug images are not captured or saved with Debug d
 compass and target captures can add overhead while debugging.
 
 Navigation destination selection accepts long, narrow filled row highlights without collapsing their corners during
-contour simplification. Thin lines and hollow outlines do not count as selected rows; the destination still requires
-an exact name match and confirmation from game state.
+contour simplification. If the usual approximation cannot supply four distinct corners, a single finer approximation
+is tried before rejecting the contour. This preserves perspective-slanted selections without changing already valid
+highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
+name match and confirmation from game state.
+Tall leading and trailing symbols are removed before the name-column crop, so a partially clipped station icon
+does not become a spurious OCR prefix. The crop boundaries and exact station-name comparison are unchanged.
 
 ### Other assists
 

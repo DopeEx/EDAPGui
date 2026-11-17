@@ -18,6 +18,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
 - Odyssey Galaxy Map system-name searches fall back to OCR-checked mouse selection and the right-hand plot button if keyboard plotting does not produce the requested route, with bounded retries and route confirmation before continuing.
+- Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner, allowing the selected station name to reach OCR.
+- Navigation station-name OCR removes complete tall symbols before cropping the name column, preventing clipped icon fragments from becoming false name prefixes.
 
 ## [2.1.0] - 2026-11-17
 
