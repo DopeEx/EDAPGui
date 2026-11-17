@@ -133,6 +133,8 @@ Bookmarks are optional shortcuts to destinations you have already saved in the g
 
 A **Galaxy bookmark** is tried first when travelling to another system.
 If it does not produce the expected route, the assist tries a system-name search.
+If direction keys move the map instead, check for overlapping menu and map movement bindings as described in
+[Keybindings](Keybindings.md#galaxy-map-menu-conflicts).
 A **System bookmark** can select a local destination after arrival. System Map bookmark categories are **Fav**,
 **Body**, **Station** and **Settlement**. The old **Navigation Panel** type is no longer offered; existing routes
 with that value fall back to station-name selection when a station name is present.

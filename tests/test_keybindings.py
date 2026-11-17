@@ -195,6 +195,36 @@ class SyntheticBindingsTestCase(BindingsDirectoryMixin, unittest.TestCase):
         self.assertEqual(kb.get_bindings()["CamZoomIn"]["key"], SCANCODE["Key_Z"])
         self.assertEqual(kb.layout, "de-DE")
 
+    def test_startup_warns_for_camera_conflicts_from_active_general_preset(self):
+        template = SYNTHETIC.replace(
+            "</Root>",
+            '<UI_Up><Primary Device="Keyboard" Key="Key_W" /><Secondary Device="{NoDevice}" Key="" /></UI_Up>'
+            '<CamTranslateForward><Primary Device="Keyboard" Key="Key_W" />'
+            '<Secondary Device="{NoDevice}" Key="" /></CamTranslateForward></Root>',
+        )
+        self.add_bindings("General.4.2.binds", template)
+        self.add_bindings("Ship.4.2.binds", SYNTHETIC.replace("Key_W", "Key_Q"))
+        self.add_bindings("StartPreset.4.start", "General\nShip\n")
+        messages = []
+        KeyBindings(lambda *args: messages.append(args))
+        self.assertTrue(
+            any("UI_Up" in text and "CamTranslateForward" in text for _, text in messages),
+            messages,
+        )
+
+    def test_startup_does_not_warn_for_modified_map_movement(self):
+        template = SYNTHETIC.replace(
+            "</Root>",
+            '<UI_Up><Primary Device="Keyboard" Key="Key_W" /><Secondary Device="{NoDevice}" Key="" /></UI_Up>'
+            '<CamTranslateForward><Primary Device="Keyboard" Key="Key_W">'
+            '<Modifier Device="Keyboard" Key="Key_LeftShift" /></Primary>'
+            '<Secondary Device="{NoDevice}" Key="" /></CamTranslateForward></Root>',
+        )
+        self.add_bindings("General.4.2.binds", template)
+        messages = []
+        KeyBindings(lambda *args: messages.append(args))
+        self.assertFalse(any("CamTranslateForward" in text for _, text in messages))
+
 
 if __name__ == "__main__":
     unittest.main()

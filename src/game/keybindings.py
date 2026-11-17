@@ -6,14 +6,14 @@ import json
 from os import listdir
 from os.path import getmtime, isfile, join
 from typing import Any
-from xml.etree.ElementTree import parse
+from xml.etree.ElementTree import parse, tostring
 
 import xmltodict
 
 from controls.directinput import keyboard_layout_table, scancode_for
 from core.logger import logger
 from game.binds_files import GENERAL, SHIP, active_binds_files, bindings_dir
-from game.keybind_fixer import sharing_allowed
+from game.keybind_fixer import BindsFile, galaxy_map_navigation_conflicts, sharing_allowed
 from game.keybind_spec import REQUIRED_ACTIONS, category_of
 
 
@@ -23,6 +23,7 @@ class KeyBindings:
 
         self.keys_to_obtain = list(REQUIRED_ACTIONS)
         self.layout: str | None = None
+        self.galaxy_map_collisions: list[tuple[str, str, str]] = []
         self.keys = self.get_bindings()
         self.bindings = self.get_bindings_dict()
 
@@ -70,6 +71,14 @@ class KeyBindings:
                 self.ap_ckb("log", f"WARNING: {warn_text}")
                 logger.warning(f"{warn_text}")
 
+        for action, camera, keyname in self.galaxy_map_collisions:
+            warn_text = (
+                f"Galaxy Map conflict: '{keyname}' is assigned to both {action} and {camera}. "
+                "Menu navigation may move the map instead. Change one binding in Elite Dangerous."
+            )
+            self.ap_ckb("log", f"WARNING: {warn_text}")
+            logger.warning(warn_text)
+
         # Check if the hotkeys are used in ED
         binding_name = self.check_hotkey_in_bindings("Key_End")
         if binding_name != "":
@@ -115,6 +124,10 @@ class KeyBindings:
             return {}
         roots = {path: parse(path).getroot() for path in set(binds_files.values())}
         layouts = {path: (root.findtext("KeyboardLayout") or "").strip() or None for path, root in roots.items()}
+        if GENERAL in binds_files:
+            general_path = binds_files[GENERAL]
+            general = BindsFile(general_path, tostring(roots[general_path], encoding="unicode"))
+            self.galaxy_map_collisions = galaxy_map_navigation_conflicts(general)
         # Key names depend on the keyboard layout of the player, which the game writes into the file
         self.layout = layouts[binds_files[SHIP]]
 

@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
+
 ## [2.1.0] - 2026-11-17
 
 ### Added

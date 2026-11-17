@@ -23,6 +23,7 @@ from game.keybind_spec import (
     FALLBACK_KEYS,
     PREFERRED_KEYS,
     REQUIRED_ACTIONS,
+    is_galaxy_map_navigation_conflict,
     is_other_mode_action,
 )
 
@@ -158,6 +159,8 @@ class Plan:
 
 def sharing_allowed(action: str, other: str) -> bool:
     """Whether the game itself lets these two actions use the same key (default presets, other game modes)."""
+    if is_galaxy_map_navigation_conflict(action, other):
+        return False
     return (
         is_other_mode_action(other)
         or other in SHARED_IN_DEFAULTS.get(action, frozenset())
@@ -167,6 +170,20 @@ def sharing_allowed(action: str, other: str) -> bool:
 
 def _conflicts(used: dict[Combo, set[str]], action: str, combo: Combo) -> list[str]:
     return sorted(o for o in used.get(combo, ()) if o != action and not sharing_allowed(action, o))
+
+
+def galaxy_map_navigation_conflicts(file: BindsFile) -> list[tuple[str, str, str]]:
+    """Find map movement keys that match an effective EDFC menu-direction binding."""
+    used = file.keyboard_combos()
+    conflicts = []
+    for action in ("UI_Up", "UI_Down", "UI_Left", "UI_Right"):
+        current = file.effective_slot(action)
+        combo = file.combo(current[1]) if current else None
+        if combo is not None:
+            for other in sorted(used.get(combo, ())):
+                if is_galaxy_map_navigation_conflict(action, other):
+                    conflicts.append((action, other, file.describe(combo)))
+    return conflicts
 
 
 def _candidates(action: str, file: BindsFile):
