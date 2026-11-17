@@ -862,15 +862,30 @@ class DisengageTestCase(MatchingTestCase):
         regions = ScreenRegions(FakeScreen(image), self.templates)
 
         self.assertTrue(regions.message_text_present())
-        self.assertGreaterEqual(regions.last_message_glyph_components, regions.message_glyph_components_min)
+        self.assertGreaterEqual(regions.last_message_row_glyphs, regions.message_row_glyphs_min)
 
-    def test_hud_readout_with_15_glyphs_does_not_trigger_disengage_ocr(self):
+    def test_short_prompt_lines_pass_without_a_16_glyph_requirement(self):
+        for count in (12, 13, 15, 16):
+            with self.subTest(glyphs=count):
+                image = np.zeros((100, 100, 3), np.uint8)
+                color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+                cv2.line(image, (0, 20), (75, 20), color, 1)
+                for index in range(count):
+                    x = 5 + index * 5
+                    cv2.rectangle(image, (x, 35), (x + 1, 45), color, -1)
+                regions = ScreenRegions(FakeScreen(image), self.templates)
+                self.assertTrue(regions.message_text_present())
+                self.assertEqual(regions.last_message_glyph_components, count)
+                self.assertEqual(regions.last_message_row_glyphs, count)
+
+    def test_scattered_readout_with_15_glyphs_does_not_trigger_disengage_ocr(self):
         image = np.zeros((100, 100, 3), np.uint8)
         color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
         cv2.line(image, (0, 20), (30, 20), color, 1)
         for index in range(15):
-            x = 5 + index * 5
-            cv2.rectangle(image, (x, 35), (x + 1, 45), color, -1)
+            x = 5 + (index % 5) * 15
+            y = 35 + (index // 5) * 20
+            cv2.rectangle(image, (x, y), (x + 1, y + 8), color, -1)
         regions = ScreenRegions(FakeScreen(image), self.templates)
         detector = Detector()
         detector.debug_overlay = False
@@ -885,6 +900,7 @@ class DisengageTestCase(MatchingTestCase):
         self.assertGreaterEqual(regions.last_message_fraction, regions.message_text_fraction)
         self.assertGreaterEqual(regions.last_message_line, regions.message_line_fraction)
         self.assertEqual(regions.last_message_glyph_components, 15)
+        self.assertEqual(regions.last_message_row_glyphs, 5)
         detector.ocr.image_simple_ocr.assert_not_called()
 
     def test_cockpit_decor_crops_do_not_trigger_disengage_ocr(self):
@@ -904,10 +920,9 @@ class DisengageTestCase(MatchingTestCase):
                 regions = ScreenRegions(FakeScreen(load_screenshot(path)), self.templates)
                 self.assertFalse(FlightMixin.try_sc_disengage(detector, regions))
                 detector.ocr.image_simple_ocr.assert_not_called()
-                self.assertFalse(
-                    regions.message_glyph_components_min
-                    <= regions.last_message_glyph_components
-                    <= regions.message_glyph_components_max
+                self.assertTrue(
+                    regions.last_message_glyph_components > regions.message_glyph_components_max
+                    or regions.last_message_row_glyphs < regions.message_row_glyphs_min
                 )
 
     def test_scattered_glyphs_do_not_trigger_ocr_even_with_enough_total_components(self):

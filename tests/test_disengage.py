@@ -4,13 +4,16 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
+import cv2
 import numpy as np
 
 from core.types import EdapInterruptError, ScTargetAlignReturn
 from routines.assists import AssistsMixin
 from routines.flight import FlightMixin
+from tests.helpers import FakeScreen
 from tests.test_detection import Detector
 from vision.disengage import DisengageWorker
+from vision.regions import ScreenRegions
 
 
 class BackgroundDisengageTestCase(unittest.TestCase):
@@ -72,6 +75,29 @@ class BackgroundDisengageTestCase(unittest.TestCase):
         self.finish()
         with patch("vision.disengage.time.monotonic", return_value=self.worker._started + 6):
             self.assertIsNone(self.worker.poll(self.target))
+
+    def test_english_glyph_count_fluctuation_does_not_cancel_inflight_ocr(self):
+        flight = self.make_flight()
+        flight.sc_disengage_label_up = lambda regions: Detector.sc_disengage_label_up(flight, regions)
+        image = np.zeros((100, 100, 3), np.uint8)
+        color = cv2.cvtColor(np.uint8([[[90, 150, 255]]]), cv2.COLOR_HSV2BGR)[0, 0].tolist()
+        cv2.line(image, (0, 20), (75, 20), color, 1)
+        for index in range(16):
+            x = 5 + index * 5
+            cv2.rectangle(image, (x, 35), (x + 1, 45), color, -1)
+        regions = ScreenRegions(FakeScreen(image), Mock())
+        self.assertFalse(flight.try_sc_disengage(regions))
+        self.assertTrue(self.started.wait(5))
+        future = self.worker._future
+
+        image[35:46, 70:82] = 0
+        self.assertFalse(flight.try_sc_disengage(regions))
+        self.assertEqual(regions.last_message_glyph_components, 13)
+        self.assertIs(self.worker._future, future)
+        self.finish()
+        self.assertTrue(flight.try_sc_disengage(regions))
+        self.assertEqual(self.ocr.image_simple_ocr.call_count, 1)
+        flight.keys.send.assert_called_once_with("HyperSuperCombination")
 
     def test_slow_negative_results_remain_available_for_diagnostics(self):
         self.ocr.string_similarity.return_value = 0.1

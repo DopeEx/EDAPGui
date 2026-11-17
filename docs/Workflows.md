@@ -201,9 +201,12 @@ For custom output locations, set `EDFC_LOG_DIR` for normal logs and `EDFC_DEBUG_
 diagnostic images before starting the program.
 Recognition scores, message-gate measurements, OCR text and fallback attempts are Debug-only diagnostics.
 Short user-facing events, such as sending the supercruise exit, remain at Info level.
-The supercruise message pre-check requires 16-80 compact, glyph-sized cyan components, with at least nine overlapping
-the same horizontal scanline, in addition to the color-area and line checks. This rejects sparse cockpit decorations,
-scattered HUD readouts and dense cyan noise without increasing the total glyph-count requirement.
+The supercruise message pre-check requires at least nine compact, glyph-sized cyan components overlapping the same
+horizontal scanline, at most 80 compact components overall, and the existing color-area and line checks.
+There is no separate 16-glyph minimum: short English prompts and letters merged by antialiasing can contain fewer
+components. This also prevents fluctuations between 13-16 otherwise aligned glyphs from canceling an in-flight OCR
+job. Sparse cockpit decorations, scattered HUD readouts and dense cyan noise remain rejected. If the message
+pre-check no longer passes, its job is still invalidated immediately; this is not a time-based grace period.
 
 During a supercruise approach, one background OCR worker reads copied message crops while the flight loop continues
 target alignment. There is no pending-frame queue, and only the flight loop can send the supercruise-exit input.

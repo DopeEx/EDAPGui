@@ -674,7 +674,7 @@ class DetectionMixin:
          if in this region then return true.
         The aim of this function is to return that a message is there, and then use OCR to determine
         what the message is. This will only use the high CPU usage OCR when necessary.
-        The check only looks for message text colored pixels, so it does not depend on the game language."""
+        The check uses message-colored pixels and glyph-row geometry rather than language-specific text."""
         text_present = scr_reg.message_text_present("disengage")
 
         # Heartbeat every 5 s, so the log shows that the check runs and how much message-colored area it sees
@@ -690,7 +690,7 @@ class DetectionMixin:
                 f"Disengage message check: message-colored area {fraction:.3f} (needs {scr_reg.message_text_fraction}), "
                 f"longest line {line:.2f} (needs {scr_reg.message_line_fraction}), "
                 f"text-like glyph components {glyph_components} "
-                f"(needs {scr_reg.message_glyph_components_min}-{scr_reg.message_glyph_components_max}), "
+                f"(maximum {scr_reg.message_glyph_components_max}), "
                 f"aligned glyphs {getattr(scr_reg, 'last_message_row_glyphs', 0)} "
                 f"(needs {scr_reg.message_row_glyphs_min})"
             )
