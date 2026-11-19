@@ -46,6 +46,8 @@ def new_waypoints(waypoints) -> EDWayPoint:
     wp.route_loaded = True
     wp.progress_error = False
     wp.repeat = False
+    wp.repeat_limit = None
+    wp.completed_runs = 0
     wp.ap = None
     # The list handling must never write into the user's waypoint folder
     for method in ("save_waypoints",):
@@ -116,9 +118,35 @@ class ReadWaypointsTestCase(unittest.TestCase):
 
         self.assertIsNone(self.wp.read_waypoints(self.write(data)))
 
-    def test_old_schema_and_numeric_repeat_limit_are_rejected(self):
+    def test_repeat_limit_progress_survives_route_reload(self):
+        data = version_2_route()
+        data["Repeat"] = True
+        data["RepeatLimit"] = 3
+        route_path = self.write(data)
+        progress_path = self.dir / "progress.json"
+        progress = self.wp._legacy_progress(self.wp.read_waypoints(route_path))
+        progress["completed_runs"] = 2
+        progress["waypoints"]["sol-stop"]["completed"] = True
+        progress_path.write_text(json.dumps(progress), encoding="utf-8")
+        self.wp.ap = mock.Mock()
+
+        with (
+            mock.patch.object(self.wp, "_progress_path", return_value=progress_path),
+            mock.patch.object(self.wp, "_remember_route"),
+        ):
+            self.assertTrue(self.wp.load_waypoint_file(str(route_path)))
+
+        self.assertTrue(self.wp.repeat)
+        self.assertEqual(self.wp.repeat_limit, 3)
+        self.assertEqual(self.wp.completed_runs, 2)
+        self.assertEqual(self.wp.get_waypoint(), (None, None))
+
+    def test_old_schema_and_invalid_repeat_limits_are_rejected(self):
         for change in (
-            {"RepeatLimit": 3},
+            {"RepeatLimit": 0},
+            {"RepeatLimit": -1},
+            {"RepeatLimit": True},
+            {"RepeatLimit": "3"},
             {"Repeat": "true"},
         ):
             data = {**version_2_route(), **change}
@@ -221,6 +249,7 @@ class ReadWaypointsTestCase(unittest.TestCase):
         wp.progress_filename = progress_path
         wp.waypoints["1"]["BuyCommodities"]["128049154"] = 4
         wp.waypoints["1"]["Completed"] = True
+        wp.completed_runs = 2
         del wp.save_waypoints
 
         with self.assertLogs("ed_log", level="DEBUG") as logs:
@@ -228,6 +257,7 @@ class ReadWaypointsTestCase(unittest.TestCase):
         self.assertTrue(any("Waypoint progress saved:" in line and str(progress_path) in line for line in logs.output))
         self.assertEqual(route_path.read_bytes(), route_contents)
         saved = json.loads(progress_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["completed_runs"], 2)
         self.assertTrue(saved["waypoints"]["1"]["completed"])
         self.assertEqual(saved["waypoints"]["1"]["buy_commodities"], {"128049154": 4})
 
@@ -238,6 +268,25 @@ class ReadWaypointsTestCase(unittest.TestCase):
         self.wp._apply_progress(fresh, progress)
         self.assertTrue(fresh["1"]["Completed"])
         self.assertEqual(fresh["1"]["BuyCommodities"], {"128049154": 4})
+        self.assertEqual(progress["completed_runs"], 2)
+
+    def test_old_progress_defaults_completed_runs_to_zero(self):
+        route_data = {"GlobalShoppingList": GLOBAL_LIST, "1": stop("Sol")}
+        progress_path = self.dir / "progress.json"
+        progress_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "waypoints": {"1": {"completed": False, "buy_commodities": {}, "sell_commodities": {}}},
+                    "global_buy_commodities": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        progress = self.wp._read_progress(progress_path, route_data)
+
+        self.assertEqual(progress["completed_runs"], 0)
 
     def test_last_route_is_remembered(self):
         selected = self.dir / "selected.json"
@@ -296,6 +345,24 @@ class GetWaypointTestCase(unittest.TestCase):
         self.assertEqual(wp.waypoints["1"]["BuyCommodities"], {"128049154": 10})
         self.assertFalse(wp.waypoints["2"]["Completed"])
 
+    def test_repeat_limit_counts_total_route_runs(self):
+        wp = new_waypoints({"GlobalShoppingList": GLOBAL_LIST, "1": stop("A")})
+        wp.repeat = True
+        wp.repeat_limit = 3
+
+        for run in range(3):
+            key, _ = wp.get_waypoint()
+            self.assertEqual(key, "1")
+            self.assertTrue(wp.mark_waypoint_complete(key))
+            next_waypoint = wp.get_waypoint()
+            if run < 2:
+                self.assertEqual(next_waypoint[0], "1")
+            else:
+                self.assertEqual(next_waypoint, (None, None))
+
+        self.assertEqual(wp.completed_runs, 3)
+        self.assertTrue(wp.waypoints["1"]["Completed"])
+
     def test_skipped_repeat_ends_the_list(self):
         wp = new_waypoints(
             {
@@ -326,17 +393,21 @@ class GetWaypointTestCase(unittest.TestCase):
             }
         )
         wp.route_definitions["1"]["BuyCommodities"] = {"128049154": 10}
+        wp.repeat_limit = 3
+        wp.completed_runs = 2
 
         self.assertTrue(wp.mark_all_waypoints_not_complete())
 
         self.assertFalse(wp.waypoints["1"]["Completed"])
         self.assertEqual(wp.waypoints["1"]["BuyCommodities"], {"128049154": 10})
         self.assertEqual(wp.waypoints["GlobalShoppingList"]["BuyCommodities"], {"128049154": 5})
+        self.assertEqual(wp.completed_runs, 0)
 
     def test_reset_save_failure_restores_in_memory_progress(self):
         wp = new_waypoints({"GlobalShoppingList": GLOBAL_LIST, "1": stop("A", Completed=True)})
         previous = copy.deepcopy(wp.waypoints)
         previous_step = 4
+        wp.completed_runs = 2
         wp.step = previous_step
         wp.save_waypoints.return_value = False
 
@@ -344,6 +415,7 @@ class GetWaypointTestCase(unittest.TestCase):
 
         self.assertEqual(wp.waypoints, previous)
         self.assertEqual(wp.step, previous_step)
+        self.assertEqual(wp.completed_runs, 2)
         self.assertTrue(wp.progress_error)
 
 

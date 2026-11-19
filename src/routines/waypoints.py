@@ -33,6 +33,8 @@ class EDWayPoint:
         self.route_name = "waypoints"
         self.route_version = 2
         self.repeat = False
+        self.repeat_limit: int | None = None
+        self.completed_runs = 0
         self.progress_filename = None
         self.route_loaded = False
         self.progress_error = False
@@ -129,11 +131,11 @@ class EDWayPoint:
             or not data["name"].strip()
             or type(data.get("Repeat")) is not bool
             or "RepeatLimit" not in data
-            or data["RepeatLimit"] is not None
+            or (data["RepeatLimit"] is not None and (type(data["RepeatLimit"]) is not int or data["RepeatLimit"] < 1))
         ):
             logger.warning(
                 "Waypoint file %s is not the current v2 format. Use Import legacy JSON; "
-                "RepeatLimit currently supports only null.",
+                "RepeatLimit must be null or a positive whole number.",
                 filename,
             )
             return None
@@ -179,7 +181,7 @@ class EDWayPoint:
             result[key] = dict(value)
             result[key].setdefault("Completed", False)
 
-        return result, data["name"], 2, data["Repeat"]
+        return result, data["name"], 2, data["Repeat"], data["RepeatLimit"]
 
     def read_waypoints(self, filename=paths.WAYPOINTS_DIR / "waypoints.json"):
         route = self._read_route(Path(filename))
@@ -192,7 +194,7 @@ class EDWayPoint:
                 self.ap.ap_ckb("log", "Waypoint file is invalid. Check log file for details.")
             return False
 
-        waypoints, route_name, route_version, repeat = route
+        waypoints, route_name, route_version, repeat, repeat_limit = route
         progress_filename = self._progress_path(filename)
         progress = self._read_progress(progress_filename, waypoints)
         if progress is None:
@@ -209,6 +211,8 @@ class EDWayPoint:
         self.route_name = route_name
         self.route_version = route_version
         self.repeat = repeat
+        self.repeat_limit = repeat_limit
+        self.completed_runs = progress.get("completed_runs", 0)
         self.progress_filename = progress_filename
         self.route_loaded = True
         self.num_waypoints = len(waypoints)
@@ -250,10 +254,13 @@ class EDWayPoint:
             return None
         entries = progress.get("waypoints")
         global_buys = progress.get("global_buy_commodities")
+        completed_runs = progress.get("completed_runs", 0)
         if (
             not isinstance(entries, dict)
             or "GlobalShoppingList" in entries
             or not self._valid_commodity_list(global_buys)
+            or type(completed_runs) is not int
+            or completed_runs < 0
         ):
             return None
         for entry in entries.values():
@@ -264,6 +271,7 @@ class EDWayPoint:
                 or not self._valid_commodity_list(entry.get("sell_commodities"), allow_all=True)
             ):
                 return None
+        progress.setdefault("completed_runs", 0)
         logger.debug("Waypoint progress restored: progress_file=%s data=%s", filename, progress)
         return progress
 
@@ -271,6 +279,7 @@ class EDWayPoint:
     def _legacy_progress(waypoints: dict) -> dict:
         return {
             "version": 1,
+            "completed_runs": 0,
             "waypoints": {
                 key: {
                     "completed": entry.get("Completed", False),
@@ -355,6 +364,7 @@ class EDWayPoint:
         try:
             progress = {
                 "version": 1,
+                "completed_runs": self.completed_runs,
                 "waypoints": {
                     key: {
                         "completed": entry["Completed"],
@@ -416,20 +426,38 @@ class EDWayPoint:
                     or not any(entry["Enabled"] for key, entry in self.waypoints.items() if key != "GlobalShoppingList")
                 ):
                     return None, None
-                logger.debug("Waypoint route repeat reached: route=%s", self.filename)
-                if not self.mark_all_waypoints_not_complete():
+                if self.repeat_limit is not None and self.completed_runs >= self.repeat_limit:
+                    return None, None
+                previous_completed_runs = self.completed_runs
+                self.completed_runs += 1
+                logger.debug(
+                    "Waypoint route repeat reached: route=%s completed_runs=%s limit=%s",
+                    self.filename,
+                    self.completed_runs,
+                    self.repeat_limit,
+                )
+                if self.repeat_limit is not None and self.completed_runs >= self.repeat_limit:
+                    if not self.save_waypoints():
+                        self.completed_runs = previous_completed_runs
+                        return None, None
+                    return None, None
+                if not self.mark_all_waypoints_not_complete(reset_completed_runs=False):
+                    self.completed_runs = previous_completed_runs
                     return None, None
                 restarted = True
                 self.step = 0
 
-    def mark_all_waypoints_not_complete(self) -> bool:
+    def mark_all_waypoints_not_complete(self, reset_completed_runs=True) -> bool:
         if not self.route_loaded:
             logger.warning("Cannot reset waypoint progress because no route is loaded.")
             return False
         previous = copy.deepcopy(self.waypoints)
         previous_step = self.step
+        previous_completed_runs = self.completed_runs
         logger.debug("Waypoint progress reset requested: route=%s", self.filename)
         self.step = 0
+        if reset_completed_runs:
+            self.completed_runs = 0
         for key, entry in self.waypoints.items():
             if key == "GlobalShoppingList":
                 continue
@@ -442,6 +470,7 @@ class EDWayPoint:
         if not self.save_waypoints():
             self.waypoints = previous
             self.step = previous_step
+            self.completed_runs = previous_completed_runs
             self.progress_error = True
             return False
         logger.debug(

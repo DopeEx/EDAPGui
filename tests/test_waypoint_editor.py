@@ -131,6 +131,8 @@ class RouteDocumentTestCase(unittest.TestCase):
         self.document.data["waypoints"] = [dict(new_waypoint(), SystemName="LHS 20", BuyCommodities={"128049197": 2})]
 
     def test_roundtrip_preserves_ids_and_definition_not_progress(self):
+        self.document.data["Repeat"] = True
+        self.document.data["RepeatLimit"] = 3
         self.document.save(self.filename)
         loaded = RouteDocument.load(self.filename)
         self.assertEqual(loaded.data, self.document.data)
@@ -138,6 +140,7 @@ class RouteDocumentTestCase(unittest.TestCase):
         route = json.loads(self.filename.read_text())
         self.assertNotIn("Completed", route["waypoints"][0])
         progress = json.loads(self.progress.read_text())
+        self.assertEqual(progress["completed_runs"], 0)
         key = route["waypoints"][0]["Id"]
         self.assertEqual(progress["waypoints"][key]["buy_commodities"], {"128049197": 2})
         self.assertFalse(progress["waypoints"][key]["completed"])
@@ -150,6 +153,15 @@ class RouteDocumentTestCase(unittest.TestCase):
         self.document.save(target)
         self.assertEqual(json.loads(target.read_text())["name"], "Another route")
         self.assertFalse(self.document.dirty)
+
+    def test_route_document_rejects_invalid_repeat_limits(self):
+        for repeat_limit in (0, -1, True, "3"):
+            with self.subTest(repeat_limit=repeat_limit):
+                data = copy.deepcopy(self.document.data)
+                data["RepeatLimit"] = repeat_limit
+                self.filename.write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    RouteDocument.load(self.filename)
 
     def test_legacy_load_and_save_upgrades_without_mutating_original(self):
         legacy = {"GlobalShoppingList": GLOBAL_LIST, "1": stop("Sol", Completed=True)}
@@ -583,12 +595,14 @@ class EditorWidgetsTestCase(unittest.TestCase):
     def test_route_repeat_checkbox_survives_rebuild_without_repeat_waypoint(self):
         self.editor.repeat.set(True)
         self.editor.change_repeat()
+        self.editor.repeat_limit.set("3")
         self.assertTrue(self.editor.document.data["Repeat"])
+        self.assertEqual(self.editor.document.data["RepeatLimit"], 3)
         self.assertEqual(self.editor.document.data["waypoints"], [])
         self.editor.destroy()
         self.editor = WaypointEditor(self.app, self.root)
         self.assertTrue(self.editor.repeat.get())
-        self.assertIsNone(self.editor.document.data["RepeatLimit"])
+        self.assertEqual(self.editor.document.data["RepeatLimit"], 3)
 
     def test_form_plot_uses_current_inputs_and_is_locked_during_an_assist(self):
         self.app.ed_ap.set_waypoint_plot = mock.Mock(return_value=True)
@@ -1832,12 +1846,14 @@ class EditorWidgetsTestCase(unittest.TestCase):
         form = self.prepare_import(ROUND_TRIP)
         form.target.set("Append to current")
         form.repeat.set(True)
+        form.repeat_limit.set("3")
         form.apply()
         self.assertEqual(len(self.editor.document.data["waypoints"]), 3)
         self.assertEqual(self.editor.document.data["waypoints"][0], old)
         self.assertEqual(self.editor.document.filename, Path("existing.json").resolve())
         self.assertTrue(self.editor.document.data["GlobalShoppingList"]["Enabled"])
         self.assertTrue(self.editor.document.data["Repeat"])
+        self.assertEqual(self.editor.document.data["RepeatLimit"], 3)
 
     def test_import_cancel_and_unsaved_cancel_preserve_original_document(self):
         self.editor.document.data["waypoints"] = [dict(new_waypoint(), SystemName="Sol")]

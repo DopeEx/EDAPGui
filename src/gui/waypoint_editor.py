@@ -53,6 +53,14 @@ def _game_language(app):
     return "en" if "en" in available else available[0]
 
 
+def _is_nonnegative_integer(value):
+    return value == "" or (value.isascii() and value.isdigit())
+
+
+def _configure_repeat_limit_style():
+    ttk.Style().configure("RepeatLimit.TEntry", padding=0)
+
+
 def style_table(tree):
     metrics = Metrics(tree)
     style = ttk.Style()
@@ -752,6 +760,7 @@ class RouteImportForm(ttk.Frame):
         self.language = tk.StringVar(self, value=_game_language(app))
         self.target = tk.StringVar(self, value="New route")
         self.repeat = tk.BooleanVar(self)
+        self.repeat_limit = tk.StringVar(self, value="0")
         self.route = None
         self.spansh_import = None
         self.spansh_filename = None
@@ -762,27 +771,48 @@ class RouteImportForm(ttk.Frame):
         self.card.rowconfigure(1, weight=1)
         self.options = ttk.Frame(self.card)
         self.options.grid(row=0, column=0, sticky="ew", pady=(0, self.metrics.u(8)))
-        self.options.columnconfigure(0, weight=0)
+        self.options.columnconfigure(0, weight=1)
+        self.route_options = ttk.Frame(self.options)
+        self.route_options.grid(row=0, column=0, sticky="ew")
         self.target_picker = ttk.Combobox(
-            self.options,
+            self.route_options,
             textvariable=self.target,
             values=("New route", "Append to current"),
             state="readonly",
             width=18,
         )
         self.target_picker.grid(row=0, column=0, sticky="w", padx=(0, self.metrics.u(12)))
-        self.language_label = ttk.Label(self.options, text="Game language")
+        self.language_label = ttk.Label(self.route_options, text="Game language")
         self.language_label.grid(row=0, column=1, sticky="e", padx=(0, self.metrics.u(6)))
         language_choices = getattr(getattr(app.ed_ap, "locale", None), "available_languages", None)
         if not language_choices:
             language_choices = get_localization(self.language.get()).available_languages
         self.language_picker = ttk.Combobox(
-            self.options, textvariable=self.language, values=language_choices, state="readonly", width=8
+            self.route_options, textvariable=self.language, values=language_choices, state="readonly", width=8
         )
         self.language_picker.grid(row=0, column=2, sticky="w")
-        self.repeat_checkbox = ttk.Checkbutton(self.options, text="Repeat route", variable=self.repeat)
-        self.repeat_checkbox.grid(row=0, column=3, sticky="w", padx=(self.metrics.u(12), 0))
-        self.options.bind("<Configure>", self.layout_options, add="+")
+        self.repeat_settings = ttk.Frame(self.options)
+        self.repeat_settings.grid(row=1, column=0, sticky="w", pady=(self.metrics.u(4), 0))
+        _configure_repeat_limit_style()
+        self.repeat_checkbox = ttk.Checkbutton(
+            self.repeat_settings, text="Repeat route", variable=self.repeat, command=self.change_repeat
+        )
+        self.repeat_checkbox.pack(side="left")
+        runs_label = ttk.Label(self.repeat_settings, text="Runs")
+        runs_label.pack(side="left", padx=(self.metrics.u(8), self.metrics.u(4)))
+        runs_tooltip = "Total number of complete route runs, including the first. Enter 0 for unlimited."
+        add_tooltip(runs_label, runs_tooltip)
+        self.repeat_limit_entry = ttk.Entry(
+            self.repeat_settings,
+            textvariable=self.repeat_limit,
+            width=6,
+            style="RepeatLimit.TEntry",
+            validate="key",
+            validatecommand=(self.register(_is_nonnegative_integer), "%P"),
+        )
+        self.repeat_limit_entry.pack(side="left")
+        add_tooltip(self.repeat_limit_entry, runs_tooltip)
+        self.repeat_limit_entry.configure(state="disabled")
         self.notebook = ttk.Notebook(self.card)
         self.notebook.grid(row=1, column=0, sticky="nsew")
         paste = ttk.Frame(self.notebook)
@@ -851,16 +881,10 @@ class RouteImportForm(ttk.Frame):
         self.language.trace_add("write", self.invalidate)
         self.bind("<Configure>", self.update_wraplengths, add="+")
         preview.bind("<Configure>", self.update_wraplengths, add="+")
-        self.layout_options()
         self.update_wraplengths()
 
-    def layout_options(self, _event=None):
-        widgets = (self.target_picker, self.language_label, self.language_picker)
-        required_width = sum(widget.winfo_reqwidth() for widget in widgets) + self.metrics.px(18)
-        if self.options.winfo_width() < (required_width + self.repeat_checkbox.winfo_reqwidth() + self.metrics.px(12)):
-            self.repeat_checkbox.grid_configure(row=1, column=0, padx=0, pady=(self.metrics.u(4), 0))
-        else:
-            self.repeat_checkbox.grid_configure(row=0, column=3, padx=(self.metrics.u(12), 0), pady=0)
+    def change_repeat(self):
+        self.repeat_limit_entry.configure(state="normal" if self.repeat.get() else "disabled")
 
     def update_wraplengths(self, _event=None):
         card_width = self.card.winfo_width()
@@ -1037,7 +1061,8 @@ class RouteImportForm(ttk.Frame):
         except ValueError as error:
             messagebox.showerror("Route import", str(error), parent=self)
             return
-        self.on_apply(entries, self.target.get() == "Append to current", self.repeat.get())
+        repeat_limit = int(self.repeat_limit.get() or "0") or None
+        self.on_apply(entries, self.target.get() == "Append to current", self.repeat.get(), repeat_limit)
 
     def snapshot(self):
         return {
@@ -1046,6 +1071,7 @@ class RouteImportForm(ttk.Frame):
             "language": self.language.get(),
             "target": self.target.get(),
             "repeat": self.repeat.get(),
+            "repeat_limit": self.repeat_limit.get(),
             "quantities": dict(self.quantities),
             "quantity": self.quantity.get(),
             "selection": self.goods.selection(),
@@ -1060,6 +1086,8 @@ class RouteImportForm(ttk.Frame):
         self.language.set(state["language"])
         self.target.set(state["target"])
         self.repeat.set(state["repeat"])
+        self.repeat_limit.set(state.get("repeat_limit", "0"))
+        self.change_repeat()
         self.quantities = dict(state["quantities"])
         if state.get("spansh_import") is not None:
             self.show_spansh_import(state["spansh_import"], state.get("spansh_filename"))
@@ -1117,6 +1145,24 @@ class WaypointEditor(ttk.Frame):
             route_row, text="Repeat route", variable=self.repeat, command=self.change_repeat
         )
         self.repeat_button.grid(row=0, column=1, sticky="w", padx=(app.metrics.u(8), 0))
+        self.repeat_limit = tk.StringVar(value=str(self.document.data["RepeatLimit"] or 0))
+        runs_label = ttk.Label(route_row, text="Runs")
+        runs_label.grid(row=0, column=2, sticky="e", padx=(app.metrics.u(8), app.metrics.u(4)))
+        runs_tooltip = "Total number of complete route runs, including the first. Enter 0 for unlimited."
+        add_tooltip(runs_label, runs_tooltip)
+        _configure_repeat_limit_style()
+        self.repeat_limit_entry = ttk.Entry(
+            route_row,
+            textvariable=self.repeat_limit,
+            width=6,
+            style="RepeatLimit.TEntry",
+            validate="key",
+            validatecommand=(self.register(_is_nonnegative_integer), "%P"),
+        )
+        self.repeat_limit_entry.grid(row=0, column=3, sticky="w")
+        add_tooltip(self.repeat_limit_entry, runs_tooltip)
+        self.repeat_limit.trace_add("write", self.change_repeat_limit)
+        self.repeat_limit_entry.configure(state="normal" if self.document.data["Repeat"] else "disabled")
         self.route_checks = self.nametowidget(str(self.route_card.cget("labelwidget")))
         self.route_checks.configure(cursor="hand2")
         self.route_checks.bind("<Button-1>", self.show_route_checks)
@@ -1331,6 +1377,8 @@ class WaypointEditor(ttk.Frame):
             self.tree.yview_moveto(scroll[0])
         self.refresh_label()
         self.repeat.set(self.document.data["Repeat"])
+        self.repeat_limit.set(str(self.document.data["RepeatLimit"] or 0))
+        self.update_repeat_limit_state()
         self.update_route_checks()
 
     def update_route_checks(self):
@@ -1355,6 +1403,7 @@ class WaypointEditor(ttk.Frame):
             button.set_disabled(state == "disabled")
         self.route_picker.configure(state="disabled" if self.locked() else "readonly")
         self.repeat_button.configure(state=state)
+        self.update_repeat_limit_state()
         if isinstance(self.form, WaypointForm):
             for button in self.form.plot_buttons:
                 button.set_disabled(self.app.active_mode is not None or self.app.SWP_A_running)
@@ -1398,7 +1447,20 @@ class WaypointEditor(ttk.Frame):
     def change_repeat(self):
         if not self.locked():
             self.document.data["Repeat"] = self.repeat.get()
+            self.update_repeat_limit_state()
             self.refresh()
+
+    def change_repeat_limit(self, *_args):
+        if self.locked():
+            return
+        value = self.repeat_limit.get()
+        self.document.data["RepeatLimit"] = int(value) if value and int(value) > 0 else None
+        self.refresh_label()
+        self.update_route_checks()
+
+    def update_repeat_limit_state(self):
+        state = "normal" if self.document.data["Repeat"] and not self.locked() else "disabled"
+        self.repeat_limit_entry.configure(state=state)
 
     def toggle_enabled(self, event):
         if self.tree.identify_column(event.x) != "#1" or self.tree.identify_region(event.x, event.y) != "cell":
@@ -1555,7 +1617,7 @@ class WaypointEditor(ttk.Frame):
         self.form = RouteImportForm(self, self.app, self.apply_import, self.cancel_form, self.import_legacy)
         self.form.grid(row=0, column=0, sticky="nsew")
 
-    def apply_import(self, entries, append, repeat=False):
+    def apply_import(self, entries, append, repeat=False, repeat_limit=None):
         if (
             self.app.WP_A_running
             or self.app.SWP_A_running
@@ -1568,6 +1630,7 @@ class WaypointEditor(ttk.Frame):
         document.data["waypoints"].extend(copy.deepcopy(entries))
         if repeat:
             document.data["Repeat"] = True
+            document.data["RepeatLimit"] = repeat_limit
         try:
             document.validate()
         except ValueError as error:
