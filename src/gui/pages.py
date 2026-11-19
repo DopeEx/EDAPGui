@@ -260,6 +260,54 @@ def _build_log(app, page):
     app.fill_log()
 
 
+def _build_cockpit_capture(app, parent):
+    capture = _card(app, parent, "Cockpit screenshot set")
+    display = ttk.Combobox(capture, values=("Unknown", "SDR", "HDR"), state="readonly", width=18)
+    colors = ttk.Combobox(capture, values=("Unknown", "Standard orange", "Custom"), state="readonly", width=18)
+    display.current(0)
+    colors.current(0)
+    brightness = ttk.Entry(capture, width=20)
+    profile = ttk.Entry(capture, width=20)
+    for row, (label, widget) in enumerate(
+        (
+            ("Display mode", display),
+            ("HUD brightness (%)", brightness),
+            ("HUD colors", colors),
+            ("Custom profile", profile),
+        )
+    ):
+        ttk.Label(capture, text=label).grid(row=row, column=0, sticky="w", pady=app.metrics.u(2))
+        widget.grid(row=row, column=1, sticky="ew", pady=app.metrics.u(2))
+
+    def start_capture():
+        value = brightness.get().strip()
+        try:
+            percent = int(value) if value else None
+            if percent is not None and not 0 <= percent <= 100:
+                raise ValueError
+        except ValueError:
+            app.ed_ap.notify_user("Enter HUD brightness as a whole percentage from 0 to 100, or leave it blank.")
+            return
+        scheme = (None, "orange", "custom")[colors.current()]
+        app.ed_ap.request_cockpit_capture(
+            {
+                "display_mode": display.get() if display.current() else None,
+                "hud_brightness_pct": percent,
+                "hud_color_scheme": scheme,
+                "hud_color_profile": (profile.get().strip() or None) if scheme == "custom" else None,
+            }
+        )
+
+    _button(
+        app,
+        capture,
+        "Capture Screenshot Set",
+        start_capture,
+        4,
+        "Start in the cockpit with no assist active. An existing target ahead is optional. Captures are local and unreviewed.",
+    )
+
+
 def build_debug(app, page):
     left, right = _columns(app, page)
     logging_card = _card(app, left, "Logging")
@@ -289,6 +337,7 @@ def build_debug(app, page):
     link.grid(row=3, column=0, columnspan=2, sticky="w", pady=app.metrics.u(4))
     _field(app, single, "TCEDestinationFilepath", 4)
     _button(app, single, "Load TCE Destination", app.load_tce_dest, 5)
+    _build_cockpit_capture(app, right)
     _page_layout(page)
     _save_label(app, page, "Debug")
 

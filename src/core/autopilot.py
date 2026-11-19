@@ -40,9 +40,12 @@ from routines.afk_combat import AfkCombat
 from routines.assists import AssistsMixin
 from routines.flight import FlightMixin
 from routines.waypoints import EDWayPoint
+from vision.cockpit_capture import capture_cockpit
 from vision.detection import DetectionMixin
 from vision.ocr import OCR
 from vision.screen import set_focus_elite_window
+
+_COCKPIT_CAPTURE_STATUS = "Capturing screenshot set"
 
 
 def _overlay_status_role(status: str) -> str:
@@ -60,6 +63,7 @@ def _overlay_status_role(status: str) -> str:
     if status in {
         "Align",
         "Approaching target",
+        _COCKPIT_CAPTURE_STATUS,
         "Docking",
         "Discovery Scan",
         "Deploying fighter",
@@ -406,6 +410,8 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
 
         # start the engine thread
         self.terminate = False  # terminate used by the thread to exit its loop
+        self._cockpit_capture_request: dict | None = None
+        self._cockpit_capture_running = False
         if do_thread:
             self.ap_thread = kthread.KThread(target=self.engine_loop, name="Autopilot")
             self.ap_thread.start()
@@ -644,7 +650,9 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 return
             ship_state = self.jn.ship_state()
             ap_mode = "Offline"
-            if self.travel_assist_enabled:
+            if self.ap_state == _COCKPIT_CAPTURE_STATUS:
+                ap_mode = "Screenshot Capture"
+            elif self.travel_assist_enabled:
                 ap_mode = "Travel Assist"
             elif self.waypoint_assist_enabled:
                 ap_mode = "Waypoint Assist"
@@ -952,8 +960,8 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
         self._waypoint_plot = None
         self.single_waypoint_enabled = enable
 
-    def set_waypoint_plot(self, entry, station: bool) -> bool:
-        if any(
+    def assist_is_enabled(self) -> bool:
+        return any(
             (
                 self.travel_assist_enabled,
                 self.waypoint_assist_enabled,
@@ -961,7 +969,44 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
                 self.discovery_scan_assist_enabled,
                 self.single_waypoint_enabled,
             )
-        ):
+        )
+
+    def request_cockpit_capture(self, metadata: dict) -> None:
+        if self.assist_is_enabled() or self._cockpit_capture_running or self._cockpit_capture_request is not None:
+            self.notify_user(
+                "Stop the running assist or wait for the current capture before starting a screenshot set."
+            )
+            return
+        self._cockpit_capture_request = dict(metadata)
+
+    def _run_cockpit_capture(self) -> None:
+        self._cockpit_capture_running = True
+        request, self._cockpit_capture_request = self._cockpit_capture_request, None
+        previous_status = None
+        try:
+            if request is None:
+                return
+            if self.assist_is_enabled():
+                self.notify_user("Screenshot set cancelled because an assist was requested.")
+                return
+            previous_status = self.ap_state
+            self.set_ap_status(_COCKPIT_CAPTURE_STATUS)
+            folder, report = capture_cockpit(self, paths.DEBUG_DIR / "screenshot-sets", request)
+            count = len(report["frames"])
+            if report["stopped"]:
+                self.notify_user(f"Screenshot set stopped: {report['stopped']} ({count} saved in {folder})")
+            else:
+                skipped = len(report["skipped"])
+                self.notify_user(f"Screenshot set saved: {count} images, {skipped} panels skipped. {folder}")
+        except OSError as error:
+            self.notify_user(f"Could not save screenshot set: {error}")
+        finally:
+            self._cockpit_capture_running = False
+            if previous_status is not None:
+                self.set_ap_status(previous_status)
+
+    def set_waypoint_plot(self, entry, station: bool) -> bool:
+        if self.assist_is_enabled():
             self.notify_user("Stop the running assist before selecting a waypoint target.")
             return False
         self._waypoint_plot = (dict(entry), station)
@@ -1038,6 +1083,8 @@ class Autopilot(ConfigMixin, DetectionMixin, FlightMixin, AssistsMixin):
     #
     def engine_loop(self):
         while not self.terminate:
+            if self._cockpit_capture_request is not None:
+                self._run_cockpit_capture()
             if not self.refresh_game_language():
                 try:
                     sleep(1)

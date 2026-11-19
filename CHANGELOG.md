@@ -10,6 +10,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Debug-mode Galaxy Map snapshots on failed search checks and unconfirmed routes, without capturing images during successful steps.
 - Debug-mode snapshots of the exact rejected HUD frame and both color masks when the supercruise message pre-check stops detecting a prompt.
+- **Capture Screenshot Set** on the Debug tab records the forward cockpit view and the left, right and lower panels into a local folder with a manifest, for reviewing recognition fixtures. Start in the cockpit with no assist running; captures stay on your machine and are never uploaded.
 
 ### Changed
 
