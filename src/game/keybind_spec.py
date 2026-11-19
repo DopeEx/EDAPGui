@@ -14,6 +14,7 @@ REQUIRED_ACTIONS: dict[str, str] = {
     "PitchDownButton": SHIP,
     "UpThrustButton": SHIP,
     "SetSpeedZero": SHIP,
+    "SetSpeed25": SHIP,
     "SetSpeed50": SHIP,
     "SetSpeed75": SHIP,
     "SetSpeed100": SHIP,
@@ -45,7 +46,8 @@ REQUIRED_ACTIONS: dict[str, str] = {
 }
 
 # Keys EDFC itself listens to. They are named the same in every keyboard layout.
-EDFC_HOTKEYS = ("Key_End", "Key_Insert", "Key_PageUp", "Key_Home")
+EDFC_HOTKEYS = ("Key_End", "Key_Home")
+KEYBIND_FIXER_BLOCKED_KEYS = (*EDFC_HOTKEYS, "Key_F7", "Key_F8", "Key_F12")
 
 GALAXY_MAP_MENU_DIRECTIONS = frozenset(("UI_Up", "UI_Down", "UI_Left", "UI_Right"))
 GALAXY_MAP_TRANSLATIONS = frozenset(
@@ -59,8 +61,8 @@ def is_galaxy_map_navigation_conflict(action: str, other: str) -> bool:
     )
 
 
-# Keys proposed for actions the shipped presets leave unbound: single keys without modifiers, no letters or
-# punctuation, because those are named differently depending on the keyboard layout.
+# Base keys for actions the shipped presets leave unbound: no letters or punctuation, because those are named
+# differently depending on the keyboard layout. Modifier variants are tried only if these candidates conflict.
 PREFERRED_KEYS: dict[str, tuple[str, ...]] = {
     "PitchUpButton": ("Key_Numpad_8",),
     "PitchDownButton": ("Key_Numpad_2",),
@@ -94,6 +96,7 @@ FALLBACK_KEYS = (
     "Key_F11",
     "Key_F12",
 )
+FALLBACK_MODIFIERS = ("Key_LeftShift", "Key_LeftControl", "Key_LeftAlt")
 
 # Actions of other game modes (on foot, SRV, camera suite). Elite allows the same key there as in the ship.
 OTHER_MODE_PREFIXES = (

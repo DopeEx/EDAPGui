@@ -89,24 +89,6 @@ class KeyBindings:
             self.ap_ckb("log", f"WARNING: {warn_text}")
             logger.warning(f"{warn_text}")
 
-        binding_name = self.check_hotkey_in_bindings("Key_Insert")
-        if binding_name != "":
-            warn_text = (
-                f"Hotkey 'Key_Insert' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDFC accidentally being triggered."
-            )
-            self.ap_ckb("log", f"WARNING: {warn_text}")
-            logger.warning(f"{warn_text}")
-
-        binding_name = self.check_hotkey_in_bindings("Key_PageUp")
-        if binding_name != "":
-            warn_text = (
-                f"Hotkey 'Key_PageUp' is used in the ED keybindings for '{binding_name}'. Recommend changing in"
-                f" ED to another key to avoid EDFC accidentally being triggered."
-            )
-            self.ap_ckb("log", f"WARNING: {warn_text}")
-            logger.warning(f"{warn_text}")
-
         binding_name = self.check_hotkey_in_bindings("Key_Home")
         if binding_name != "":
             warn_text = (

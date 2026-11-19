@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Conservative supercruise loop recovery for Travel and Waypoint Assist reduces throttle to 25%, then 0%, when repeated course corrections make no confirmed progress. Stable realignment restores 50%; continued confirmed lack of progress stops the assist with a warning, while disengage detection retains priority. **Set Speed to 25%** is now required and can be added with `fix_keybinds.bat`.
 - Set waypoint route repetition to a total number of runs, including the first, or unlimited; the count survives restarts and resets with route progress.
 - Debug-mode Galaxy Map snapshots on failed search checks and unconfirmed routes, without capturing images during successful steps.
 - Debug-mode snapshots of the exact rejected HUD frame and both color masks when the supercruise message pre-check stops detecting a prompt.
@@ -18,6 +19,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Commodity sales use the sell dialog's default maximum without quantity inputs when the request covers all units of that commodity in the hold, including **All**. Smaller fixed quantities remain individually selected, and progress still follows confirmed transactions.
 - Waypoint Assist starts with the same cockpit check and SYS 2 / ENG 4 / WEP 0 power setup as Travel Assist; an unconfirmed distribution shows a message and continues.
 - The default **Wait For Autodock** time after granted docking is now five minutes instead of four.
+- The keybinding fixer avoids configured EDFC hotkey keys and tries Shift, Ctrl, or Alt combinations when no unmodified suggestion is available. If issues remain but no repair can be proposed, it asks users to resolve them manually.
 
 ### Fixed
 

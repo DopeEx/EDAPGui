@@ -642,6 +642,41 @@ class ScAssistStatusTestCase(unittest.TestCase):
         self.assertEqual(statuses[-1], "Arrived at target")
         assists.dock.assert_not_called()
 
+    def test_repeated_ring_loss_does_not_overwrite_reduced_recovery_throttle(self):
+        assists, _ = self.make_assists("SC to Target")
+        results = iter(
+            [
+                ScTargetAlignReturn.Found,
+                ScTargetAlignReturn.Lost,
+                ScTargetAlignReturn.Lost,
+                ScTargetAlignReturn.Disengage,
+            ]
+        )
+
+        def align(_scr_reg):
+            result = next(results)
+            if result is ScTargetAlignReturn.Found:
+                self.assertIsNone(assists._sc_loop_recovery)
+            return result
+
+        def compass(_scr_reg, **kwargs):
+            if kwargs:
+                self.assertIsNotNone(assists._sc_loop_recovery)
+                assists._sc_loop_recovery.stage = 2
+            return False
+
+        assists.sc_target_align = Mock(side_effect=align)
+        assists.nav_align = compass
+        assists.wait_for_sc_disengage = Mock(return_value=False)
+        assists.interdiction_check = Mock(return_value=False)
+        assists.try_sc_disengage = Mock(return_value=False)
+        self.run_sc_assist(assists)
+        self.assertEqual(
+            assists.keys.send.call_args_list,
+            [call("SetSpeed50"), call("SetSpeed75"), call("SetSpeed50"), call("SetSpeedZero")],
+        )
+        self.assertIsNone(assists._sc_loop_recovery)
+
 
 class TravelAssistTestCase(unittest.TestCase):
     def setUp(self):

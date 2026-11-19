@@ -13,6 +13,7 @@ from core.constants import (
 )
 from core.types import EdapInterruptError, ScTargetAlignReturn
 from routines.flight import FlightMixin
+from routines.sc_recovery import ScLoopRecovery
 
 
 class Keys:
@@ -307,6 +308,140 @@ class SupercruiseEntryTestCase(unittest.TestCase):
         self.assertEqual(flight.keys.send.call_args_list[-1], call("SetSpeedZero"))
 
 
+class ScLoopRecoveryTestCase(unittest.TestCase):
+    @staticmethod
+    def offset(error=80, ahead=True):
+        return {"yaw": 0.0, "pit": float(error), "z": 1.0 if ahead else -1.0}
+
+    def advance(self, recovery, start, end, error=80):
+        actions = []
+        for now in range(start, end + 1):
+            action = recovery.observe(self.offset(error), now, corrected=True)
+            if action is not None:
+                actions.append((now, action))
+        return actions
+
+    def test_persistent_stall_reduces_twice_before_controlled_stop(self):
+        recovery = ScLoopRecovery()
+        self.assertEqual(
+            self.advance(recovery, 0, 55),
+            [(15, "SetSpeed25"), (25, "SetSpeedZero"), (55, "stop")],
+        )
+
+    def test_slow_progress_and_small_jitter_do_not_trigger_the_same_response(self):
+        recovery = ScLoopRecovery()
+        for now in range(60):
+            self.assertIsNone(recovery.observe(self.offset(85 - now), now, corrected=True))
+        recovery = ScLoopRecovery()
+        actions = []
+        for now in range(16):
+            action = recovery.observe(self.offset(80 + now % 2), now, corrected=True)
+            if action:
+                actions.append(action)
+        self.assertEqual(actions, ["SetSpeed25"])
+
+    def test_missing_inconsistent_or_unacted_on_readings_cannot_trigger_recovery(self):
+        for mode in ("missing", "hemisphere", "jump", "no-correction", "gap"):
+            with self.subTest(mode=mode):
+                recovery = ScLoopRecovery()
+                for now in range(100):
+                    off = self.offset(80, ahead=now % 2 == 0 if mode == "hemisphere" else True)
+                    if mode == "missing" and now % 2:
+                        off = None
+                    if mode == "jump" and now % 2:
+                        off = self.offset(20)
+                    self.assertIsNone(
+                        recovery.observe(off, now * 20 if mode == "gap" else now, corrected=mode != "no-correction")
+                    )
+
+    def test_zero_throttle_still_allows_genuine_progress_beyond_the_total_limit(self):
+        recovery = ScLoopRecovery()
+        self.advance(recovery, 0, 25)
+        for now in range(26, 91):
+            self.assertIsNone(recovery.observe(self.offset(80 - (now - 25)), now, corrected=True))
+        self.assertEqual(self.advance(recovery, 91, 99, error=15), [])
+        self.assertEqual(recovery.observe(self.offset(15), 100, corrected=True), "stop")
+
+    def test_reacquisition_requires_ten_stable_seconds_after_throttle_reduction(self):
+        recovery = ScLoopRecovery()
+        self.advance(recovery, 0, 25)
+        self.assertEqual(self.advance(recovery, 26, 36, error=3), [])
+        self.assertEqual(recovery.observe(self.offset(3), 37), "recovered")
+
+    def test_stop_notifies_and_raises_a_controlled_interrupt(self):
+        flight = FlightMixin()
+        flight._sc_loop_recovery = ScLoopRecovery()
+        self.advance(flight._sc_loop_recovery, 0, 54)
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        flight.keys = Mock()
+        flight.stop_sco_monitoring = Mock()
+        flight.notify_user = Mock()
+        with patch("routines.flight.time.monotonic", return_value=55), self.assertRaises(EdapInterruptError):
+            flight._check_sc_loop_recovery(self.offset(), corrected=True)
+        flight.keys.send.assert_called_once_with("SetSpeedZero")
+        flight.stop_sco_monitoring.assert_called_once()
+        flight.notify_user.assert_called_once()
+
+    def test_exit_prompt_preempts_recovery_and_further_steering(self):
+        flight = FlightMixin()
+        flight._sc_loop_recovery = ScLoopRecovery()
+        self.advance(flight._sc_loop_recovery, 0, 54)
+        flight.get_destination_offset = Mock(return_value={"x": 40, "y": 40})
+        flight.try_sc_disengage = Mock(return_value=True)
+        flight.keys = Mock()
+        with patch("routines.flight.time.monotonic", return_value=55):
+            self.assertEqual(flight.sc_target_align(None), ScTargetAlignReturn.Disengage)
+        flight.keys.send.assert_not_called()
+
+    def test_compass_turn_loop_applies_both_reductions_and_stops_without_an_unexpected_error(self):
+        flight = FlightMixin()
+        flight._sc_loop_recovery = ScLoopRecovery()
+        flight.config = {"NavAlignTries": 3}
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        flight.read_nav_offset = Mock(return_value={**self.offset(), "roll": 0.0})
+        flight.try_sc_disengage = Mock(return_value=False)
+        flight.keys = Mock()
+        flight.ap_ckb = Mock()
+        flight.stop_sco_monitoring = Mock()
+        flight.notify_user = Mock()
+        clock = [0.0]
+
+        def pitch(_degrees):
+            clock[0] += 5
+
+        flight.pitch_up = pitch
+        with (
+            patch("routines.flight.time.monotonic", side_effect=lambda: clock[0]),
+            patch("routines.flight.sleep"),
+            self.assertRaises(EdapInterruptError),
+        ):
+            flight.nav_align(None, abort_on_disengage=True)
+        self.assertEqual(
+            flight.keys.send.call_args_list, [call("SetSpeed25"), call("SetSpeedZero"), call("SetSpeedZero")]
+        )
+
+    def test_target_change_discards_old_recovery_before_any_timeout_action(self):
+        flight = FlightMixin()
+        flight._sc_loop_recovery = ScLoopRecovery()
+        self.advance(flight._sc_loop_recovery, 0, 54)
+        flight._sc_loop_target = (1, 2, "Old target")
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        flight.status = Mock()
+        flight.status.get_cleaned_data.return_value = {
+            "Destination_System": 1,
+            "Destination_Body": 3,
+            "Destination_Name": "New target",
+        }
+        flight.keys = Mock()
+        with patch("routines.flight.time.monotonic", return_value=55):
+            flight._check_sc_loop_recovery(self.offset(), corrected=True)
+        self.assertIsNone(flight._sc_loop_recovery)
+        flight.keys.send.assert_not_called()
+
+
 class TargetAlignment(FlightMixin):
     def __init__(self):
         self.keys = Keys()
@@ -341,6 +476,7 @@ class TargetAlignmentTestCase(unittest.TestCase):
 
     def test_missing_target_saves_last_failed_capture_after_retries(self):
         flight = Mock()
+        flight._sc_loop_recovery = None
         flight.get_destination_offset.return_value = None
         flight.try_sc_disengage.return_value = False
         flight.is_destination_occluded.return_value = False
@@ -352,6 +488,7 @@ class TargetAlignmentTestCase(unittest.TestCase):
 
     def test_target_lost_during_alignment_saves_failed_capture(self):
         flight = Mock()
+        flight._sc_loop_recovery = None
         flight.get_destination_offset.side_effect = [{"x": 20, "y": 0}, None]
         flight.is_destination_occluded.return_value = False
         flight.try_sc_disengage.return_value = False

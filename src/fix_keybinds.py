@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import json
 import sys
 from pathlib import Path
 
+from core.paths import AP_CONFIG
 from game.binds_files import GENERAL, SHIP, preset_names
 from game.keybind_fixer import (
     CONFLICT,
@@ -34,6 +36,8 @@ TEXTS = {
         "überschreiben kann.",
         "no_start": "StartPreset.4.start oder eine dort genannte .binds-Datei wurde nicht gefunden. Bitte im Spiel "
         "einmal die Steuerung öffnen und speichern.",
+        "config_error": "EDFC-Hotkeys konnten nicht aus {file} gelesen werden: {error}",
+        "no_changes": "Keine Änderungen möglich. Bitte die Hinweise oben manuell beheben.",
         "files": "Aktive Belegungen:",
         "builtin": "{category}: Voreinstellung '{name}' ist ein eingebautes Preset ohne Datei und kann nicht "
         "geändert werden. Bitte im Spiel auf DopeEx (oder ein eigenes Preset) umstellen, sonst fehlen die "
@@ -50,8 +54,8 @@ TEXTS = {
         REPLACE: "KEIN FREIER PLATZ: überschreibt eine Belegung eines anderen Geräts",
         CONFLICT: "KONFLIKT: Taste ist doppelt belegt mit {partners}",
         "default": "Standard-Voreinstellung von Elite",
-        "preferred": "Vorschlag von EDFC (einzelne Taste, ohne Modifier)",
-        "fallback": "Vorschlag von EDFC (einzelne Taste, ohne Modifier)",
+        "preferred": "Vorschlag von EDFC (bevorzugte Taste, bei Bedarf mit Modifier)",
+        "fallback": "Vorschlag von EDFC (Fallback-Taste, bei Bedarf mit Modifier)",
         "change": "[{n}/{total}] {action} ({category}, {file})",
         "slot": "    {slot}: {old}  ->  {new}   [{source}]",
         "empty": "(leer)",
@@ -72,6 +76,8 @@ TEXTS = {
         "when it exits.",
         "no_start": "StartPreset.4.start or a .binds file it names was not found. Open the controls in the game "
         "once and save them.",
+        "config_error": "Could not read EDFC hotkeys from {file}: {error}",
+        "no_changes": "No changes could be applied. Please resolve the notes above manually.",
         "files": "Active bindings:",
         "builtin": "{category}: the preset '{name}' is built into the game, has no file and cannot be changed. "
         "Please switch to DopeEx (or a custom preset) in the game, otherwise EDFC lacks its keys.",
@@ -87,8 +93,8 @@ TEXTS = {
         REPLACE: "NO FREE SLOT: overwrites a binding of another device",
         CONFLICT: "CONFLICT: key is also used by {partners}",
         "default": "Elite default preset",
-        "preferred": "EDFC suggestion (single key, no modifier)",
-        "fallback": "EDFC suggestion (single key, no modifier)",
+        "preferred": "EDFC suggestion (preferred key, with a modifier if needed)",
+        "fallback": "EDFC suggestion (fallback key, with a modifier if needed)",
         "change": "[{n}/{total}] {action} ({category}, {file})",
         "slot": "    {slot}: {old}  ->  {new}   [{source}]",
         "empty": "(empty)",
@@ -112,6 +118,25 @@ def detect_language() -> str:
         return "de" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0xFF == 0x07 else "en"
     except (AttributeError, OSError):
         return "en"
+
+
+def load_configured_hotkeys(config_file: Path = AP_CONFIG) -> tuple[str, str]:
+    """Read the hotkeys the application currently uses, falling back to its defaults when no config exists."""
+    defaults = {"HotKey_StartTravel": "home", "HotKey_StopAllAssists": "end"}
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        config = {}
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(str(error)) from error
+    if not isinstance(config, dict):
+        raise ValueError("configuration root must be a JSON object")
+
+    start = config.get("HotKey_StartTravel", config.get("HotKey_StartFSD", defaults["HotKey_StartTravel"]))
+    stop = config.get("HotKey_StopAllAssists", defaults["HotKey_StopAllAssists"])
+    if not isinstance(start, str) or not start.strip() or not isinstance(stop, str) or not stop.strip():
+        raise ValueError("configured hotkeys must be non-empty strings")
+    return start, stop
 
 
 def ask(texts: dict[str, str], change: Change) -> str:
@@ -223,7 +248,12 @@ def main(argv: list[str] | None = None) -> int:
         if category not in files:
             print("  " + texts["builtin"].format(category=texts[category], name=name))
 
-    plan = build_plan(files)
+    try:
+        hotkeys = load_configured_hotkeys()
+    except ValueError as error:
+        print(texts["config_error"].format(file=AP_CONFIG, error=error))
+        return 1
+    plan = build_plan(files, blocked_hotkeys=hotkeys)
     if plan.notes:
         print()
         print(texts["notes"])
@@ -233,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             print("  " + texts[note.kind].format(action=note.action, old=old, layout=note.file.layout or "en-US"))
     if not plan.changes:
         print()
-        print(texts["ok"])
+        print(texts["no_changes"] if plan.notes else texts["ok"])
         return 0
 
     if args.dry_run:
