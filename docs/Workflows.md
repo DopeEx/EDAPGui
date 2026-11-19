@@ -340,6 +340,15 @@ height separates them from the name within the narrow leading-symbol area. Only 
 receive an additional background margin, which helps OCR preserve spaced numeric suffixes; established crops
 retain their previous framing. No recognized letters or digits are silently discarded or substituted.
 
+Before searching, the Navigation panel holds up for five seconds to move toward the start of the list; reaching
+the first entry is not confirmed. Destination names are not unique row identifiers: several resource extraction
+sites can have the same title.
+After a down input, a changed highlight position or movement of a uniquely detected scrollbar thumb can confirm
+progress even if the name is unchanged. Both observations use the same capture as the name read; background
+animation alone does not count as progress. The scan does not stop merely because a name has appeared before.
+Unreadable or unconfirmed movement does not trigger blind row skipping. The existing per-input wait, 200-row
+limit per attempt, two-attempt search window and exact-name re-read/game-target confirmation remain in effect.
+
 ### Other assists
 
 - **Discovery Scanner Assist** is labeled **Honk Assist** in the sidebar. While in supercruise, it attempts the

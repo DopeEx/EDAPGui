@@ -127,6 +127,8 @@ already selected.
 The panel search reads the highlighted name from the screen, scrolls through the list and selects the first exact
 match. This screen-reading process is called OCR; you do not need to configure it separately for each station.
 Small destination rows are enlarged before OCR, without substituting similar-looking letters and digits in names.
+Repeated names, such as resource extraction sites, do not by themselves end the search. Highlight or scrollbar
+movement confirms that another same-named row was reached; the assist does not blindly skip unreadable rows.
 Long lists can take longer. The search makes at most two attempts within a two-minute search window;
 closing the panel and checking the selected target can take additional time.
 If the destination cannot be found or confirmed, the assist stops with a message.

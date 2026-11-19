@@ -32,6 +32,7 @@ class EDNavigationPanel:
         self.status_parser = StatusParser()
 
         self.nav_pnl_coords = None  # [top left, top right, bottom left, bottom right]
+        self._destination_position: tuple[int, int, int | None] | None = None
         self._last_destination_name_image: np.ndarray | None = None
 
         # The rect is [L, T, R, B], top left x, y, and bottom right x, y in fraction of screen resolution
@@ -108,6 +109,7 @@ class EDNavigationPanel:
             save_case("navigation-panel", reason, {"evaluated": image, "later-panel": context})
 
     def _selected_destination(self) -> str:
+        self._destination_position = None
         image = self.ocr.capture_region_pct({"rect": [0.11, 0.35, 0.70, 0.86]})
         debug = logger.isEnabledFor(logging.DEBUG)
         if debug:
@@ -134,7 +136,21 @@ class EDNavigationPanel:
         logger.debug("Navigation destination-name OCR: name=%r", text)
         if not text:
             self._save_recognition_failure("destination", image)
+        else:
+            _, _x, y, _w, h = items[0]
+            self._destination_position = (y, h, self._destination_scrollbar_y(image))
         return text
+
+    @staticmethod
+    def _destination_scrollbar_y(image) -> int | None:
+        strip = image[:, -max(2, round(image.shape[1] * 0.006)) :, :3]
+        _, _, stats, centers = cv2.connectedComponentsWithStats((strip.max(axis=2) >= 140).astype(np.uint8))
+        bars = [
+            round(center[1])
+            for (_x, _y, width, height, area), center in zip(stats[1:], centers[1:])
+            if width >= 2 and height >= image.shape[0] * 0.04 and height >= 4 * width and area >= width * height * 0.6
+        ]
+        return bars[0] if len(bars) == 1 else None
 
     @staticmethod
     def _destination_name_image(row):
@@ -201,13 +217,29 @@ class EDNavigationPanel:
         return cropped
 
     def _next_destination(self, previous: str, deadline: float) -> str | None:
+        previous_position = getattr(self, "_destination_position", None)
         self.keys.send("UI_Down")
         change_deadline = min(deadline, monotonic() + 2.5)
         stable_reads = 0
         while monotonic() < change_deadline:
             sleep(0.2)
             current = self._selected_destination()
-            if current and current != previous:
+            position = getattr(self, "_destination_position", None)
+            moved = False
+            if previous_position is not None and position is not None:
+                old_y, old_height, old_scroll = previous_position
+                y, height, scroll = position
+                moved = abs(y - old_y) > min(height, old_height) * 0.3 or (
+                    old_scroll is not None and scroll is not None and abs(scroll - old_scroll) >= 2
+                )
+            if current and (current != previous or moved):
+                if current == previous:
+                    logger.debug(
+                        "Navigation selection moved with unchanged name %r: %s -> %s",
+                        current,
+                        previous_position,
+                        position,
+                    )
                 return current
             stable_reads = stable_reads + 1 if current == previous else 0
         # Only repeated readable, unchanged rows indicate the list boundary.
@@ -221,17 +253,17 @@ class EDNavigationPanel:
             self._last_destination_name_image = None
         if not self._navigation_tab():
             return False
-        self.keys.send("UI_Up", hold=4)
+        self.keys.send("UI_Up", hold=5)
         sleep(0.5)
         current = self._selected_destination()
-        seen = set()
-        while current and current not in seen and len(seen) < 200 and monotonic() < deadline:
-            seen.add(current)
+        rows = 0
+        while current and rows < 200 and monotonic() < deadline:
+            rows += 1
             parsed_name = current
             logger.debug(
                 "Station OCR scan: attempt=%s row=%s selected=%r parsed_name=%r expected=%r match=%s",
                 attempt + 1,
-                len(seen),
+                rows,
                 current,
                 parsed_name,
                 expected,
@@ -272,7 +304,7 @@ class EDNavigationPanel:
         )
         logger.debug(
             "Station OCR scan stopped: rows=%s last_selection=%r deadline_reached=%s",
-            len(seen),
+            rows,
             current,
             monotonic() >= deadline,
         )
