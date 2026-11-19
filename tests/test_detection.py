@@ -271,6 +271,115 @@ class TemplateTestCase(MatchingTestCase):
 
 
 class CompassTestCase(MatchingTestCase):
+    def test_dim_cyan_rim_over_warm_glare_requires_a_single_hollow_marker(self):
+        for scale in (1, 2):
+            for shape in ("ring", "filled", "arc", "two-rings", "glare"):
+                with self.subTest(scale=scale, shape=shape):
+                    image = np.full((80 * scale, 80 * scale, 3), (121, 132, 165), dtype=np.uint8)
+                    cv2.line(image, (28 * scale, 0), (46 * scale, 79 * scale), (135, 147, 169), 5 * scale)
+                    rim = (155, 167, 143)
+                    point = (39 * scale, 51 * scale)
+                    if shape in ("ring", "filled", "two-rings"):
+                        cv2.circle(image, point, 4 * scale, rim, -1 if shape == "filled" else scale)
+                    if shape == "two-rings":
+                        cv2.circle(image, (24 * scale, 28 * scale), 4 * scale, rim, scale)
+                    if shape == "arc":
+                        cv2.ellipse(image, point, (4 * scale, 4 * scale), 0, 0, 220, rim, scale)
+                    # A near-equal warm highlight crosses the rim and makes its luminance silhouette ambiguous.
+                    if shape == "ring":
+                        cv2.line(image, (43 * scale, 49 * scale), (43 * scale, 51 * scale), (135, 147, 169), scale)
+
+                    found = DetectionMixin.find_white_navpoint(image, (40 * scale, 40 * scale), 32 * scale)
+
+                    if shape == "ring":
+                        assert found is not None
+                        self.assertTrue(found[2])
+                        self.assertAlmostEqual(found[0], point[0], delta=scale)
+                        self.assertAlmostEqual(found[1], point[1], delta=scale)
+                    else:
+                        self.assertIsNone(found)
+
+    def test_local_panther_markers_keep_position_and_direction(self):
+        folder = FIXTURES / "screenshots" / "diagnostics" / "compass"
+        for filename, direction in (
+            ("panther-filled-hull-reflection-context.png", 1.0),
+            ("panther-filled-hull-missed-context.png", 1.0),
+            ("panther-hollow-right-rim-context.png", -1.0),
+        ):
+            with self.subTest(filename=filename):
+                path = folder / filename
+                if not path.exists():
+                    self.skipTest("local Panther compass crop unavailable")
+                regions = ScreenRegions(
+                    FakeScreen(load_screenshot(path), width=1920, height=1080), ImageTemplates(1080)
+                )
+                with patch.object(Detector, "dump_compass_debug"):
+                    offset = Detector().get_nav_offset(regions)
+                self.assertIsNotNone(offset)
+                self.assertEqual(offset["z"], direction)
+                if direction > 0:
+                    self.assertLess(abs(offset["pit"]), 10)
+                    self.assertLess(abs(offset["yaw"]), 10)
+                else:
+                    self.assertGreater(offset["x"], 0.8)
+
+    def test_locally_contrasting_filled_marker_beats_a_broad_hull_reflection(self):
+        image = np.zeros((80, 80, 3), np.uint8)
+        cv2.ellipse(image, (38, 54), (6, 4), 0, 0, 360, (230, 230, 230), -1)
+        cv2.circle(image, (39, 30), 4, (206, 206, 142), -1)
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                scaled = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+                found = DetectionMixin.find_white_navpoint(scaled, (40 * scale, 40 * scale), 28 * scale)
+                self.assertIsNotNone(found)
+                self.assertFalse(found[2])
+                self.assertAlmostEqual(found[0] / scale, 39, delta=1)
+                self.assertAlmostEqual(found[1] / scale, 30, delta=1)
+
+    def test_filled_fallback_rejects_ambiguous_points(self):
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                image = np.zeros((80, 80, 3), np.uint8)
+                for point in ((28, 35), (50, 35)):
+                    cv2.circle(image, point, 4, (206, 206, 142), -1)
+                scaled = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+                self.assertIsNone(DetectionMixin.find_white_navpoint(scaled, (40 * scale, 40 * scale), 28 * scale))
+
+    def test_local_filled_marker_on_bright_hull_stays_ahead(self):
+        path = FIXTURES / "screenshots" / "diagnostics" / "compass" / "anaconda-filled-bright-hull-context.png"
+        if not path.exists():
+            self.skipTest("local Anaconda bright-hull compass crop unavailable")
+        image = load_screenshot(path)
+        regions = ScreenRegions(FakeScreen(image, width=1920, height=1080), ImageTemplates(1080))
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], 1.0)
+        self.assertLess(abs(offset["pit"]), 30)
+        self.assertLess(abs(offset["yaw"]), 30)
+
+    def test_diagonal_hull_texture_is_not_a_round_marker_hole(self):
+        image = np.zeros((72, 72, 3), np.uint8)
+        texture = np.array(
+            [
+                [1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 1, 0, 1, 1],
+                [1, 1, 1, 0, 0, 1, 1],
+                [1, 1, 0, 0, 1, 1, 1],
+                [1, 0, 1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1, 1, 1],
+            ],
+            np.uint8,
+        )
+        image[35:42, 40:47] = np.where(texture[:, :, None], 160, 50)
+        cv2.circle(image, (28, 36), 3, (160, 160, 160), -1)
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                scaled = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+                hsv = cv2.cvtColor(scaled, cv2.COLOR_BGR2HSV)
+                self.assertIsNone(DetectionMixin._navpoint_ring_hole(hsv, (36 * scale, 36 * scale), 28 * scale))
+
     def test_incoming_hollow_and_charging_rim_markers_keep_their_direction(self):
         folder = FIXTURES / "screenshots" / "diagnostics" / "incoming-20261116" / "compass"
         available = sorted(folder.glob("*_evaluated.png"))
@@ -302,6 +411,19 @@ class CompassTestCase(MatchingTestCase):
                 self.assertTrue(found[2])
                 self.assertAlmostEqual(found[0], expected[0], delta=2)
                 self.assertAlmostEqual(found[1], expected[1], delta=2)
+
+    def test_slightly_saturated_bottom_marker_is_detected_from_live_crop(self):
+        path = FIXTURES / "screenshots" / "1080p" / "31_crop_compass-behind-bottom-slightly-saturated_sdr-hud75_de.png"
+        if not path.exists():
+            self.skipTest("local failed Compass crop unavailable")
+        image = load_screenshot(path)
+        regions = ScreenRegions(FakeScreen(image, width=1920, height=1080), ImageTemplates(1080))
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+
+        self.assertIsNotNone(offset)
+        self.assertEqual(offset["z"], -1.0)
+        self.assertLess(offset["y"], -0.5)
 
     def test_hollow_marker_touching_compass_rim_is_found_at_both_scales(self):
         for radius in (28, 56):
@@ -350,7 +472,7 @@ class CompassTestCase(MatchingTestCase):
     def test_colored_compass_lines_and_large_reflections_are_not_markers(self):
         for radius in (28, 56):
             center = radius + 8
-            for color in ((0, 100, 200), (180, 150, 0), (180, 180, 180)):
+            for color in ((0, 100, 200), (180, 150, 0), (180, 180, 180), (206, 206, 142)):
                 with self.subTest(radius=radius, color=color):
                     image = np.zeros((center * 2, center * 2, 3), np.uint8)
                     cv2.circle(image, (center, center), radius, color, 2)
@@ -1160,8 +1282,8 @@ class RegionFilterTestCase(MatchingTestCase):
         regions = ScreenRegions(FakeScreen(None, 1920, 1080), self.templates)
 
         compass = regions.reg["compass"]
-        self.assertEqual(compass["rect"], [633, 702, 883, 1080])
-        self.assertEqual((compass["width"], compass["height"]), (250, 378))
+        self.assertEqual(compass["rect"], [576, 702, 883, 1080])
+        self.assertEqual((compass["width"], compass["height"]), (307, 378))
 
     def test_all_regions_lie_inside_the_screen(self):
         for width, height in ((1920, 1080), (3440, 1440), (2560, 1440)):

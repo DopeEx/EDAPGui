@@ -269,6 +269,18 @@ class InternalPanelLanguageTests(unittest.TestCase):
         self.assertEqual(panel._selected_tab(), "")
         panel.ocr.image_simple_ocr.assert_not_called()
 
+    def test_dim_playlist_can_be_confirmed_by_the_highlight_fallback(self):
+        panel = self.make_panel("de")
+        panel.screen = SimpleNamespace(screen_width=1920, screen_height=1080)
+        panel.reg = {"right_panel": {"rect": [0.30, 0.20, 0.91, 0.28]}}
+        panel.ocr = Mock()
+        panel.ocr.solid_highlighted_items.side_effect = lambda *args, **kwargs: (
+            [(Mock(), 1086, 32, 58, 37)] if kwargs.get("intermediate_gray_fallback") else []
+        )
+
+        self.assertEqual(panel._selected_tab(), "playlist")
+        panel.ocr.image_simple_ocr.assert_not_called()
+
     def test_icon_tabs_navigate_to_inventory_and_require_confirmation(self):
         from core.constants import GuiFocusInternalPanel
 

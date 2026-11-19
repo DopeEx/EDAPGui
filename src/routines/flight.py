@@ -4,6 +4,7 @@ import random
 import threading
 import time
 from time import sleep
+from typing import Literal
 
 import cv2
 
@@ -21,6 +22,7 @@ from core.constants import (
     FlagsLowFuel,
     FlagsOverHeating,
     FlagsSupercruise,
+    ship_rpy_normal_50,
 )
 from core.logger import logger
 from core.types import EdapInterruptError, ScTargetAlignReturn
@@ -51,6 +53,7 @@ NAV_ALIGN_LOST_READS = 4
 NAV_ALIGN_LOST_DELAY = 0.5
 NAV_ALIGN_MAX_REROLLS = 2
 NAV_ALIGN_REROLL_YAW = 30
+NAV_ALIGN_CLOSE_DEG = 10
 
 SUPERCRUISE_START_TIMEOUT = 30.0
 SUPERCRUISE_ENTRY_TIMEOUT = 60.0
@@ -154,7 +157,7 @@ class FlightMixin:
         self._align_for_docking(scr_reg)
         self.keys.send("SetSpeed50")
 
-        sleep(12)
+        sleep(14)
         # Distance is not measured; a Distance denial triggers another checked approach.
         self.keys.send("SetSpeedZero", repeat=2)
         sleep(3)  # Wait for ship to come to stop
@@ -230,7 +233,7 @@ class FlightMixin:
         #  which is dull red, the star field is 'brighter' than the sun, so our sun avoidance could pitch up
         #  endlessly. So we will have a fail_safe_timeout to kick us out of pitch up if we've pitch past 110 degrees, but
         #  we'll add 3 more second for pad in case the user has a higher pitch rate than the vehicle can do
-        fail_safe_timeout = (120 / self.pitchrate) + 3
+        fail_safe_timeout = self._rotation_hold("Pitch", 120) + 3
         starttime = time.time()
 
         # if sun in front of us, then keep pitching up until it is below us
@@ -261,12 +264,20 @@ class FlightMixin:
             self.keys.send("PitchDownButton", state=0)
 
     def wait_for_sc_disengage(self, scr_reg, seconds) -> bool:
-        """Wait up to the given seconds, keeping watch for the disengage prompt.
-        Returns True if the supercruise exit was requested."""
-        end = time.time() + seconds
-        while time.time() < end:
+        """Watch for the exit prompt after ring loss, unless the compass confirms a turn is needed."""
+        end = time.monotonic() + seconds
+        off_course_reads = 0
+        while time.monotonic() < end:
             if self.try_sc_disengage(scr_reg):
                 return True
+            off = self.get_nav_offset(scr_reg)
+            if off is not None and (off["z"] < 0 or max(abs(off["yaw"]), abs(off["pit"])) > NAV_ALIGN_CLOSE_DEG):
+                off_course_reads += 1
+                if off_course_reads >= 2:
+                    logger.debug("SC target loss: ending disengage wait for confirmed off-course compass: %s", off)
+                    return False
+            else:
+                off_course_reads = 0
             sleep(0.2)
         return False
 
@@ -302,9 +313,10 @@ class FlightMixin:
         """Use the compass to find the nav point position.  Will then perform rotation and pitching
         to put the nav point in the middle of the compass, i.e. target right in front of us.
         With abort_on_disengage the alignment is cancelled as soon as the supercruise exit was requested,
-        and True is returned."""
+        and True is returned. Otherwise returns False after compass confirmation or a visible target-ring
+        fallback. Stops the assist if neither can be verified."""
 
-        close = 10  # in degrees
+        close = NAV_ALIGN_CLOSE_DEG
         if self.jn.ship_state()["status"] not in ("in_supercruise", "in_space", "dockingdenied"):
             logger.error("align=err1, nav_align not in super or space")
             raise Exception("nav_align not in super or space")
@@ -319,14 +331,14 @@ class FlightMixin:
             off = self.read_nav_offset(scr_reg)
             if off is None:
                 # Never steer without a reading: a guessed position turns the ship away from the target
-                logger.warning("Compass Align: compass or nav point not visible, alignment stopped.")
-                return False
+                logger.debug("Compass Align: compass or nav point not visible, compass steering stopped.")
+                break
             logger.debug(f"Compass align try {ii + 1}: {off}")
 
             # Check if we are close enough already; the nav point flickers, so the reading must be confirmed
             if abs(off["yaw"]) < close and abs(off["pit"]) < close:
                 if self.compass_confirmed(scr_reg, close):
-                    break
+                    return False
                 logger.debug("Compass align: centered reading not confirmed, aligning again.")
                 continue
 
@@ -402,7 +414,16 @@ class FlightMixin:
                 continue
             sleep(0.1)
             logger.debug("final x:" + str(off["x"]) + " y:" + str(off["y"]))
-        return False
+            if abs(off["yaw"]) < close and abs(off["pit"]) < close and self.compass_confirmed(scr_reg, close):
+                return False
+
+        if self.get_destination_offset(scr_reg) is not None:
+            logger.warning("Compass alignment unconfirmed; continuing with the visible target ring.")
+            return False
+        self.keys.send("SetSpeedZero")
+        logger.warning("Compass alignment unconfirmed and no target ring detected. Flight assist stopped.")
+        self.notify_user("Could not confirm target alignment. Flight assist stopped; take control of the ship.")
+        raise RuntimeError("Flight assist stopped (target alignment unconfirmed)")
 
     def fsd_target_align(self, scr_reg, close=50, allow_starting_hyperspace=False, proportional=False):
         """Coarse align to the target to support FSD jumping.
@@ -416,10 +437,6 @@ class FlightMixin:
         start_time = time.monotonic()
         steps = 0
 
-        # Base holds were tuned on a ship with yaw/pitch rates of FSD_REF_YAW_RATE/FSD_REF_PITCH_RATE deg/s;
-        # scale them so other ships turn by about the same angle per step.
-        hold_pitch = min(0.150 * FSD_REF_PITCH_RATE / self.pitchrate, 0.150 * FSD_HOLD_SCALE_MAX)
-        hold_yaw = min(0.300 * FSD_REF_YAW_RATE / self.yawrate, 0.300 * FSD_HOLD_SCALE_MAX)
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
 
@@ -446,6 +463,9 @@ class FlightMixin:
             logger.debug("  off is None, cannot continue alignment")
             return
 
+        # Scale the base holds so ships turn by about the same angle per step.
+        hold_pitch = min(self._rotation_hold("Pitch", 0.150 * FSD_REF_PITCH_RATE), 0.150 * FSD_HOLD_SCALE_MAX)
+        hold_yaw = min(self._rotation_hold("Yaw", 0.300 * FSD_REF_YAW_RATE), 0.300 * FSD_HOLD_SCALE_MAX)
         logger.debug(
             f"Fine align start: x={off['x']:.1f}, y={off['y']:.1f}, tolerance={close}px, proportional={proportional}."
         )
@@ -563,7 +583,7 @@ class FlightMixin:
         if off is None:
             logger.debug("sc_target_align not finding target")
             self.dump_target_debug()
-            self.ap_ckb("log", "Target not found, terminating SC Assist")
+            self.ap_ckb("log", "Target lost, attempting re-alignment.")
             return ScTargetAlignReturn.Lost
 
         while (abs(off["x"]) > close) or (abs(off["y"]) > close):
@@ -813,10 +833,10 @@ class FlightMixin:
         # Correct the larger axis first; the next cycle re-measures
         if abs(yaw_off) >= abs(pit_off):
             key = "YawRightButton" if yaw_off > 0 else "YawLeftButton"
-            hold = abs(yaw_off) * FSD_ALIGN_GAIN / self.yawrate
+            hold = self._rotation_hold("Yaw", abs(yaw_off) * FSD_ALIGN_GAIN)
         else:
             key = "PitchUpButton" if pit_off > 0 else "PitchDownButton"
-            hold = abs(pit_off) * FSD_ALIGN_GAIN / self.pitchrate
+            hold = self._rotation_hold("Pitch", abs(pit_off) * FSD_ALIGN_GAIN)
         hold = min(max(hold, FSD_ALIGN_MIN_HOLD), FSD_ALIGN_MAX_HOLD)
 
         logger.debug(
@@ -928,30 +948,42 @@ class FlightMixin:
         logger.error(f"FSD Jump failed {jump_tries} times. jump=err2")
         raise Exception("FSD Jump failure")
 
-    #
+    def _rotation_hold(self, axis: Literal["Roll", "Pitch", "Yaw"], degrees: float) -> float:
+        # The status flag still distinguishes the flight modes while the journal reports FSD charging.
+        if self.status.get_flag(FlagsSupercruise):
+            mode = "supercruise"
+            rate = {"Roll": self.rollrate, "Pitch": self.pitchrate, "Yaw": self.yawrate}[axis]
+        else:
+            mode = "normal space"
+            ship_type = self.jn.ship_state().get("type")
+            profile = ship_rpy_normal_50.get(ship_type)
+            if profile is None:
+                message = f"Rotation stopped: no normal-space turn rates for {ship_type or 'the active ship'}."
+                logger.warning(message)
+                self.notify_user(message)
+                raise EdapInterruptError(message)
+            rate = profile[f"{axis}Rate"]
+        hold = degrees / rate
+        logger.debug("Rotation timing: %s, %s %.2f deg at %.2f deg/s = %.3f s.", mode, axis, degrees, rate, hold)
+        return hold
+
     def rotate_left(self, deg):
-        htime = deg / self.rollrate
-        self.keys.send("RollLeftButton", hold=htime)
+        self.keys.send("RollLeftButton", hold=self._rotation_hold("Roll", deg))
 
     def rotate_right(self, deg):
-        htime = deg / self.rollrate
-        self.keys.send("RollRightButton", hold=htime)
+        self.keys.send("RollRightButton", hold=self._rotation_hold("Roll", deg))
 
     def pitch_down(self, deg):
-        htime = deg / self.pitchrate
-        self.keys.send("PitchDownButton", htime)
+        self.keys.send("PitchDownButton", self._rotation_hold("Pitch", deg))
 
     def pitch_up(self, deg):
-        htime = deg / self.pitchrate
-        self.keys.send("PitchUpButton", htime)
+        self.keys.send("PitchUpButton", self._rotation_hold("Pitch", deg))
 
     def yaw_left(self, deg):
-        htime = deg / self.yawrate
-        self.keys.send("YawLeftButton", hold=htime)
+        self.keys.send("YawLeftButton", hold=self._rotation_hold("Yaw", deg))
 
     def yaw_right(self, deg):
-        htime = deg / self.yawrate
-        self.keys.send("YawRightButton", hold=htime)
+        self.keys.send("YawRightButton", hold=self._rotation_hold("Yaw", deg))
 
     def refuel(self, scr_reg):
         """Check if refueling needed, ensure correct start type."""

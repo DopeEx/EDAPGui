@@ -31,7 +31,8 @@ This document summarizes the behavior currently implemented and lists a small nu
    approaching. Missing or unconfirmed alignment stops the approach with zero throttle and a user message.
    This also applies to Waypoint station approaches and is repeated before moving closer after a docking denial
    due to distance. Forward approach segments remain time-based; station distance is not measured.
-   It requests docking through the Navigation panel and waits for the docking computer.
+   It requests docking through the Navigation panel and waits up to five minutes by default for the docking computer
+   (configurable in Settings > Wait For Autodock).
    It confirms panel focus and the selected Contacts tab before sending the docking inputs. Tab changes are sent
    individually and checked again; unreadable highlights do not trigger blind switching. If confirmation times out,
    the docking attempt stops with an error instead of retrying selection in an unknown tab.
@@ -52,6 +53,8 @@ they are departure checks, not collision avoidance during travel.
 
 1. Loads the route selected in the Waypoints tab and visits its stops in order, skipping inactive and completed stops.
    Older route files must first be imported through **Import... > Legacy JSON...** and saved.
+   At startup it uses the same cockpit check and **SYS 2 / ENG 4 / WEP 0** power setup as Travel Assist.
+   If the PIP distribution cannot be confirmed, it shows a message and continues.
 2. For another system, it first tries the configured Galaxy Map bookmark. If there is none or it does not produce
    the expected route, it searches by system name. A blank system name means the current system.
 3. After entering supercruise, it selects and confirms the next route system before each jump alignment.
@@ -161,13 +164,22 @@ include `user_data/stats/` in an external backup for that protection.
 
 Cockpit tab and navigation-row recognition first checks the existing bright filled highlights, including
 thin-line removal. If neither check finds a highlight, a bounded adaptive brightness threshold separates
-dim selected backgrounds from dark inactive tabs. The fallback uses HSV value (the brightest color channel),
+dim selected backgrounds from dark inactive tabs. The first fallback uses HSV value (the brightest color channel),
 so shaded default-orange highlights are not rejected merely because their grayscale luminance is low.
-Its threshold stays between 140 and 210; it does not lower the normal bright-highlight threshold.
-The same brightness measure and threshold validate the rectified highlight's
+Only if it finds no highlight, a separate adaptive grayscale check can isolate a dim selection from saturated
+scenery that merges with it in the value mask. Existing results, including multiple ambiguous highlights, retain
+priority. Each adaptive threshold stays between 140 and 210; the normal bright-highlight threshold is unchanged.
+If a left- or right-panel tab still has no candidate, an intermediate grayscale threshold can recover a dim filled tab
+that blends into the surrounding HUD at the lower threshold. Navigation destination rows also have a narrowly scoped
+value threshold of 205 for bright orange fills that fall just below the adaptive value cutoff.
+The same brightness measure and threshold used for each mask also validate its rectified highlight's
 filled area; quadrilateral, size and fill checks still reject text-only areas and hollow outlines.
 Tab navigation still requires one uniquely recognized, OCR-confirmed tab before sending a switch or action.
 The left tab capture includes the System icon when the panel appears slightly farther left.
+Destination-name preprocessing separates leading icons from the rectified row border and removes their soft edges
+when there is a clear gap before the name. Shallow highlights use a smaller vertical inset so the name's lower
+strokes survive before the crop is padded for OCR. The shortest crops are converted to luminance so colored
+selection chevrons are less likely to be read as letters in the name.
 
 Occluded-target detection checks white and beige dashed rings with their existing color-specific match thresholds.
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight
@@ -183,7 +195,8 @@ path so a recognized visible ring is not treated as missing. Targets obscured by
 HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
 to include rings near the previous upper boundary.
 
-Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
+The compass search extends left to keep the sphere in view when the cockpit HUD shifts. Compass marker fallback
+uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers
 are checked separately so a behind marker is not mistaken for an ahead dot. A rejected filled-template match
 cannot validate a weak behind-template match. A filled-blob fallback that disagrees with the template direction
@@ -194,7 +207,22 @@ recognition path for SDR/HDR and both HUD color schemes, not a
 resolution-specific mode. Real monitor/HDR and HUD-brightness combinations still require in-game validation.
 If a dim hollow marker merges with the compass rim or charging glow, an additional fallback checks for one
 compact dark hole with a brighter surrounding ring. It requires contrast in at least seven of eight directions
-and rejects multiple candidate holes rather than guessing a position.
+and a compact hole regardless of its orientation; diagonal ship-hull texture gaps must not turn a filled marker
+into a behind reading. Hollow markers can be up to 0.25 of the compass radius in their longest dimension, covering
+slightly wider bottom-rim markers while retaining the shape and contrast checks. It rejects multiple candidate holes
+rather than guessing a position.
+
+For filled markers, a separate local-contrast pass also accepts slightly saturated bright cores. A morphological
+background estimate removes broad reflections; candidates must be compact, sphere-relative in size and brighter
+than their surroundings in at least seven of eight directions. A single such core takes priority over an ordinary
+low-saturation blob; multiple cores are treated as unknown. The existing white-marker path remains available for
+glare and rim cases where the marker touches other bright surfaces; its saturation limits are unchanged.
+
+Compass alignment requires repeated centered readings, including after the last steering attempt. If confirmation
+fails or the marker disappears, it can hand off to target-ring alignment only when the visible-ring detector
+independently finds a target. Otherwise it sets zero throttle, notifies the user and stops the assist.
+The return value of `nav_align()` still reports a requested supercruise exit, not alignment success.
+Normal-space station approaches retain their stricter compass confirmation before moving closer.
 
 Set **Debug > Log level > Debug** before reproducing a recognition problem. Normal technical messages remain in
 `user_data/logs/autopilot.log`; the complete technical log, including those messages and debug details, is written to
@@ -270,10 +298,13 @@ and is excluded from Git along with the rest of `user_data/`.
   with 1.5 times its width and height (clipped at screen edges). The search region and matching behavior stay unchanged.
   While Debug is enabled, each target search captures the larger region; images are saved only for a diagnostic case.
   The target can still lie outside the context; this is not a full screenshot.
-- Missing compasses and weak nav-point matches save the evaluated image and a larger same-frame context. The search
-  itself still uses the original region. The larger capture is used only while Debug is enabled.
+- Missing compasses and weak nav-point matches save the evaluated image and a larger same-frame context. Matching
+  uses the same search region with or without Debug; the extra context is captured only when Debug is enabled.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
+- For a close but non-exact destination OCR read, Debug saves the evaluated list region and the exact OCR name crop
+  before advancing, at most once per scan attempt. Similarity triggers diagnostics only; selection still requires
+  an exact match and the existing confirmation checks.
 - Odyssey Galaxy Map name searches save full game-window snapshots in `user_data/debug/galaxy-map/` only for
   failed checks, lost map focus or unconfirmed routes. Successful steps do not capture or save diagnostic images.
   The debug log records the stage, requested system, attempt, game GUI focus and window-activation setting.
@@ -302,12 +333,24 @@ details before sharing them. Debug images are not captured or saved with Debug d
 compass and target captures can add overhead while debugging.
 
 Navigation destination selection accepts long, narrow filled row highlights without collapsing their corners during
-contour simplification. If the usual approximation cannot supply four distinct corners, a single finer approximation
-is tried before rejecting the contour. This preserves perspective-slanted selections without changing already valid
-highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
+contour simplification. If the usual approximation fails the corner, rectified-size or fill checks, a single finer
+approximation is tried before rejecting the contour. This preserves perspective-slanted selections without changing
+already valid highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
 name match and confirmation from game state.
 Tall leading and trailing symbols are removed before the name-column crop, so a partially clipped station icon
-does not become a spurious OCR prefix. The crop boundaries and exact station-name comparison are unchanged.
+does not become a spurious OCR prefix. Compact leading icons are also removed when a gap wider than the text
+height separates them from the name within the narrow leading-symbol area. Only these newly cleaned crops
+receive an additional background margin, which helps OCR preserve spaced numeric suffixes; established crops
+retain their previous framing. No recognized letters or digits are silently discarded or substituted.
+
+Before searching, the Navigation panel holds up for five seconds to move toward the start of the list; reaching
+the first entry is not confirmed. Destination names are not unique row identifiers: several resource extraction
+sites can have the same title.
+After a down input, a changed highlight position or movement of a uniquely detected scrollbar thumb can confirm
+progress even if the name is unchanged. Both observations use the same capture as the name read; background
+animation alone does not count as progress. The scan does not stop merely because a name has appeared before.
+Unreadable or unconfirmed movement does not trigger blind row skipping. The existing per-input wait, 200-row
+limit per attempt, two-attempt search window and exact-name re-read/game-target confirmation remain in effect.
 
 ### Other assists
 
@@ -380,6 +423,14 @@ These are deferred improvements for future consideration.
   avoidance only once a reliable direction away from the planet and suitable in-game validation are available.
 - Assess HUD distance OCR for feedback-controlled station approaches instead of timed forward flight. Deferred
   until its reliability across resolutions, HUD colors and languages has been evaluated; not used by current approaches.
+- Evaluate using the game's built-in Supercruise Assist for eligible in-system destinations when the ship has the
+  module fitted. Verify how EDFC can confirm activation and arrival, and define when to use EDFC's own approach
+  instead if the module is unavailable or cannot be engaged.
+- Defer automatic recovery from the supercruise "loop of shame" until a naturally occurring case is captured in
+  the debug log. After an overshoot, look for a target that stays off-center across several turn corrections
+  despite reliable compass readings, rather than assuming a slow turn or a momentary ring loss is a loop.
+  Evaluate whether temporarily reducing throttle to 25% breaks the loop without disrupting normal recovery or
+  missing the disengage prompt.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
   Bookmarks remain an alternative when a destination cannot be read reliably.
 - Avoid changing hyperspace-interdiction recovery until there is a reliable way to validate it. Interdiction attempts

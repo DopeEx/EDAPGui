@@ -300,16 +300,22 @@ class AssistsMixin:
             sleep(1)
             return FsdAssistResult.InSystemTarget
 
+    def prepare_travel_power(self, assist_name: str) -> bool:
+        """Confirm cockpit focus and give the engines priority before starting an assist."""
+        if not self.ship_control.goto_cockpit_view(timeout=5.0):
+            return False
+        if not set_power_distribution(self.keys, self.status, "engine", skip_if_set=True):
+            self.notify_user(f"Power distribution could not be confirmed. {assist_name} will continue.")
+        return True
+
     def travel_assist(self, scr_reg):
         """Choose the required travel phase from the currently targeted system."""
         system_target = self.jump_target()
         if not system_target and not self.has_in_system_target(self.status.get_cleaned_data()):
             self.ap_ckb("log", "No local target found. Select a target and try again.")
             return
-        if not self.ship_control.goto_cockpit_view(timeout=5.0):
+        if not self.prepare_travel_power("Travel Assist"):
             return
-        if not set_power_distribution(self.keys, self.status, "engine", skip_if_set=True):
-            self.notify_user("Power distribution could not be confirmed. Travel Assist will continue.")
         if system_target:
             self.total_dist_jumped = 0
             result = self.fsd_assist(scr_reg)
@@ -398,30 +404,30 @@ class AssistsMixin:
         self.set_ap_status("Align")
         self.keys.send("SetSpeed50")
         self.nav_align(scr_reg)  # Compass Align
-        # The target is ahead now, so cruise at 75%, where ships handle best in supercruise.
-        self.keys.send("SetSpeed75")
         self.set_ap_status(cruise_status)
 
         self.jn.ship_state()["interdicted"] = False
+        target_acquired = False
 
         # Loop forever keeping tight align to target, until we get SC Disengage popup
         self.ap_ckb("log+vce", "Target Align")
         while True:
             sleep(0.05)
             if self.jn.ship_state()["status"] == "in_supercruise":
-                # Align and stay on target. If false is returned, we have lost the target behind us.
                 align_res = self.sc_target_align(scr_reg)
                 if align_res == ScTargetAlignReturn.Lost:
-                    # Continue ahead before aligning to prevent us circling the target.
-                    # The target ring changes shortly before arrival, so keep watching for the disengage prompt.
-                    if self.wait_for_sc_disengage(scr_reg, 10):
-                        break
-                    self.keys.send("SetSpeed50")
+                    if target_acquired:
+                        # The ring can disappear just before the exit prompt, even on a good course.
+                        if self.wait_for_sc_disengage(scr_reg, 10):
+                            break
+                        self.keys.send("SetSpeed50")
                     if self.nav_align(scr_reg, abort_on_disengage=True):  # Compass Align
                         break
 
                 elif align_res == ScTargetAlignReturn.Found:
-                    pass
+                    if not target_acquired:
+                        target_acquired = True
+                        self.keys.send("SetSpeed75")
 
                 elif align_res == ScTargetAlignReturn.Disengage:
                     break

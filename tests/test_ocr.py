@@ -78,6 +78,129 @@ class OcrConcurrencyTestCase(unittest.TestCase):
 
 
 class HighlightTestCase(unittest.TestCase):
+    def test_shallow_tab_keeps_its_height_after_contour_simplification(self):
+        outline = np.array(
+            [
+                [279, 24],
+                [278, 23],
+                [278, 20],
+                [150, 21],
+                [149, 22],
+                [79, 22],
+                [78, 23],
+                [20, 23],
+                [21, 52],
+                [22, 53],
+                [22, 59],
+                [111, 58],
+                [112, 57],
+                [163, 57],
+                [164, 56],
+                [215, 56],
+                [216, 55],
+                [268, 55],
+                [269, 54],
+                [280, 54],
+                [280, 43],
+                [279, 42],
+            ],
+            np.int32,
+        )
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        for scale in (1, 2):
+            for color in ((0, 130, 220), (220, 220, 220), (220, 130, 0)):
+                with self.subTest(scale=scale, color=color):
+                    image = np.zeros((90 * scale, 320 * scale, 3), np.uint8)
+                    cv2.fillPoly(image, [outline * scale], color)
+                    items = ocr.solid_highlighted_items(image, 35 * scale, 35 * scale)
+                    self.assertEqual(len(items), 1)
+                    self.assertGreaterEqual(items[0][0].shape[0], 35 * scale * 0.9)
+
+    def test_chamfered_tab_with_eroded_polygon_corners_is_restored_by_minimum_area_box(self):
+        # Simplification erodes all corner candidates of this chamfered tab below the size
+        # gate (seen on the Corsair navigation tab bar); the minimum-area box recovers it.
+        outline = np.array(
+            [[26, 25], [265, 25], [271, 31], [271, 55], [265, 61], [26, 61], [20, 55], [20, 31]],
+            np.int32,
+        )
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                image = np.zeros((90 * scale, 320 * scale, 3), np.uint8)
+                cv2.fillPoly(image, [outline * scale], (0, 130, 220))
+                items = ocr.solid_highlighted_items(image, 35 * scale, 35 * scale)
+                self.assertEqual(len(items), 1)
+                self.assertGreaterEqual(items[0][0].shape[0], 35 * scale * 0.9)
+
+    def test_local_orange_navigation_rows_are_separated_from_blue_cockpit_lines(self):
+        folder = paths.ROOT / "tests" / "fixtures" / "screenshots" / "diagnostics" / "navigation-orange-20261118"
+        images = sorted(folder.glob("*_evaluated.png"))
+        if not images:
+            self.skipTest("local orange navigation rows unavailable")
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        for path in images:
+            with self.subTest(screenshot=path.name):
+                image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                items = ocr.solid_highlighted_items(image, 700, 50)
+                self.assertEqual(len(items), 1)
+                self.assertGreater(items[0][0].shape[1], 1500)
+                self.assertGreater(items[0][0].shape[0], 50)
+
+    def test_dim_highlight_is_separated_from_connected_saturated_background(self):
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        for scale in (1, 2):
+            for filled in (True, False):
+                with self.subTest(scale=scale, filled=filled):
+                    image = np.zeros((100 * scale, 600 * scale, 3), np.uint8)
+                    background = np.array([[0, 0], [400, 0], [400, 15], [15, 15], [15, 99], [0, 99]], np.int32)
+                    cv2.fillPoly(image, [background * scale], (0, 0, 230))
+                    cv2.rectangle(image, (15 * scale, 40 * scale), (30 * scale, 45 * scale), (0, 0, 230), -1)
+                    highlight = np.array([[30, 35], [290, 20], [290, 65], [30, 80]], np.int32) * scale
+                    if filled:
+                        cv2.fillConvexPoly(image, highlight, (201, 201, 201))
+                    else:
+                        cv2.polylines(image, [highlight], True, (201, 201, 201), 2 * scale)
+                    cv2.putText(
+                        image,
+                        "NAVIGATION",
+                        (45 * scale, 58 * scale),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6 * scale,
+                        (0, 40, 100),
+                        2 * scale,
+                    )
+                    before = image.copy()
+                    items = ocr.solid_highlighted_items(image, 35 * scale, 35 * scale)
+                    self.assertEqual(len(items), int(filled))
+                    if filled:
+                        _, x, y, width, _ = items[0]
+                        self.assertEqual(x, 30 * scale)
+                        self.assertEqual(y, 20 * scale)
+                        self.assertGreater(width, 250 * scale)
+                    np.testing.assert_array_equal(image, before)
+
+    def test_local_navigation_tab_with_red_background_is_extracted(self):
+        path = (
+            paths.ROOT
+            / "tests"
+            / "fixtures"
+            / "screenshots"
+            / "diagnostics"
+            / "navigation-tab-red-background-20261117"
+            / "navigation-tab_evaluated.png"
+        )
+        if not path.exists():
+            self.skipTest("local navigation tab with red background unavailable")
+        image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        items = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR).solid_highlighted_items(image, 35, 35)
+        self.assertEqual(len(items), 1)
+        _, x, y, width, height = items[0]
+        self.assertGreater(x, 80)
+        self.assertLess(x, 100)
+        self.assertLess(y, 35)
+        self.assertGreater(width, 260)
+        self.assertLess(height, 50)
+
     def test_local_slanted_navigation_rows_keep_four_distinct_corners(self):
         folder = paths.ROOT / "tests" / "fixtures" / "screenshots" / "diagnostics" / "navigation-slanted-20261117"
         images = sorted(folder.glob("*_evaluated.png"))
@@ -179,6 +302,26 @@ class HighlightTestCase(unittest.TestCase):
                 self.assertEqual(len(items), 1)
                 self.assertLess(items[0][1], 30 * scale)
 
+    def test_intermediate_value_fallback_is_opt_in_and_runs_after_adaptive_checks(self):
+        ocr = HIGHLIGHT_OCR.__new__(HIGHLIGHT_OCR)
+        image = np.zeros((100, 600, 3), np.uint8)
+        candidate = [(np.zeros((35, 350, 3), np.uint8), 20, 20, 350, 35)]
+        calls = []
+
+        def find_highlights(_image, _min_w, _min_h, threshold, remove_thin_lines, *, use_value=False):
+            calls.append((threshold, remove_thin_lines, use_value))
+            return candidate if threshold == 205 and use_value else []
+
+        with patch.object(ocr, "_highlighted_quadrilaterals", side_effect=find_highlights):
+            self.assertEqual(ocr.solid_highlighted_items(image, 350, 25), [])
+            self.assertNotIn((205, False, True), calls)
+            calls.clear()
+            self.assertEqual(
+                ocr.solid_highlighted_items(image, 350, 25, remove_thin_lines=True, intermediate_value_fallback=True),
+                candidate,
+            )
+        self.assertIn((205, True, True), calls)
+
     def test_bright_highlight_retains_priority_over_saturated_fallback(self):
         image = np.zeros((100, 600, 3), np.uint8)
         image[20:80, 20:290] = (255, 255, 255)
@@ -236,6 +379,77 @@ class HighlightTestCase(unittest.TestCase):
 
 @unittest.skipIf(OCR is None, "PaddleOCR is not installed")
 class OCRTestCase(unittest.TestCase):
+    def test_local_shallow_transactions_tab_is_confirmed_with_real_ocr(self):
+        path = (
+            paths.ROOT
+            / "tests"
+            / "fixtures"
+            / "screenshots"
+            / "diagnostics"
+            / "navigation-tab-shallow-20261118"
+            / "transactions-tab_evaluated.png"
+        )
+        if not path.exists():
+            self.skipTest("local shallow transactions tab unavailable")
+        from i18n.localization import LocalizationManager
+        from panels.navigation import EDNavigationPanel
+
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = Mock(screen_width=1920, screen_height=1080)
+        panel.locale = LocalizationManager(str(paths.LOCALES_DIR), "de")
+        panel.ocr = OCR(screen=None)
+        panel.ocr.capture_region_pct = Mock(
+            return_value=cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        )
+        with patch.object(panel, "_save_recognition_failure"):
+            self.assertEqual(panel._selected_tab(), "transactions")
+
+    def test_local_orange_navigation_names_keep_numeric_suffixes_without_icon_characters(self):
+        from panels.navigation import EDNavigationPanel
+        from tests.helpers import load_screenshot
+
+        folder = paths.ROOT / "tests" / "fixtures" / "screenshots" / "diagnostics" / "navigation-orange-20261118"
+        expected = {
+            "destination-body_evaluated.png": "60 TAURI B 6 A",
+            "destination-duplicate_evaluated.png": "RESOURCE EXTRACTION SITE HAZARDOUS",
+        }
+        if not all((folder / name).exists() for name in expected):
+            self.skipTest("local orange navigation rows unavailable")
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = Mock(screen_width=3840, screen_height=2160)
+        panel.ocr = OCR(screen=None, language="en")
+        for name, text in expected.items():
+            with self.subTest(screenshot=name):
+                panel.ocr.capture_region_pct = Mock(return_value=load_screenshot(folder / name))
+                with patch.object(panel, "_save_recognition_failure") as failure:
+                    self.assertEqual(panel._selected_destination(), text)
+                failure.assert_not_called()
+
+    def test_local_navigation_tab_with_red_background_is_confirmed_with_real_ocr(self):
+        from i18n.localization import LocalizationManager
+        from panels.navigation import EDNavigationPanel
+        from tests.helpers import load_screenshot
+
+        path = (
+            paths.ROOT
+            / "tests"
+            / "fixtures"
+            / "screenshots"
+            / "diagnostics"
+            / "navigation-tab-red-background-20261117"
+            / "navigation-tab_evaluated.png"
+        )
+        if not path.exists():
+            self.skipTest("local navigation tab with red background unavailable")
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = Mock(screen_width=1920, screen_height=1080)
+        panel.locale = LocalizationManager(str(paths.LOCALES_DIR), "de")
+        panel.ocr = OCR(screen=None)
+        panel.ocr.capture_region_pct = Mock(return_value=load_screenshot(path))
+        with patch.object(panel, "_save_recognition_failure") as failure:
+            self.assertEqual(panel._selected_tab(), "navigation")
+        failure.assert_not_called()
+
     def test_local_station_symbol_does_not_add_a_name_prefix(self):
         from panels.navigation import EDNavigationPanel
         from tests.helpers import load_screenshot

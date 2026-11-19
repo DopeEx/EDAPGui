@@ -100,7 +100,9 @@ class EDInternalStatusPanel:
         width, height = size_scale_for_station(35, 30, self.screen.screen_width, self.screen.screen_height)
         items = self.ocr.solid_highlighted_items(image, width, height)
         if not items:
-            items = self.ocr.solid_highlighted_items(image, width, height, remove_thin_lines=True)
+            items = self.ocr.solid_highlighted_items(
+                image, width, height, remove_thin_lines=True, intermediate_gray_fallback=True
+            )
         if len(items) != 1:
             logger.debug("Internal tab highlight count=%s; no unique selected tab.", len(items))
             self._save_tab_failure(image)

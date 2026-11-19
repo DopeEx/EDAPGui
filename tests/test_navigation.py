@@ -40,7 +40,7 @@ class StationNavigationTestCase(unittest.TestCase):
             self.assertTrue(self.panel.lock_destination("Ohm City"))
         self.panel.ap.wait_for_expected_in_system_target.assert_called_once_with("Ohm City")
         advance.assert_not_called()
-        self.assertEqual(self.panel.keys.send.call_args_list.count(mock.call("UI_Up", hold=4)), 1)
+        self.assertEqual(self.panel.keys.send.call_args_list.count(mock.call("UI_Up", hold=5)), 1)
         self.assertEqual(sum(call.args[0] == "UI_Select" for call in self.panel.keys.send.call_args_list), 2)
 
     def test_numeric_station_name_is_not_parsed_as_a_distance(self):
@@ -64,8 +64,39 @@ class StationNavigationTestCase(unittest.TestCase):
         ):
             self.assertTrue(self.panel.lock_destination("Ohm City"))
         self.assertEqual(advance.call_count, 20)
-        self.assertEqual(self.panel.keys.send.call_args_list.count(mock.call("UI_Up", hold=4)), 1)
+        self.assertEqual(self.panel.keys.send.call_args_list.count(mock.call("UI_Up", hold=5)), 1)
         self.panel.ap.wait_for_expected_in_system_target.assert_called_once_with("Ohm City")
+
+    def test_equal_names_do_not_stop_the_scan_before_the_requested_station(self):
+        repeated = "RESOURCE EXTRACTION SITE HAZARDOUS"
+        with (
+            mock.patch.object(self.panel, "_selected_destination", side_effect=[repeated, "OHM CITY"]),
+            mock.patch.object(self.panel, "_next_destination", side_effect=[repeated, "OHM CITY"]) as advance,
+        ):
+            self.assertTrue(self.panel._lock_visible_destination("Ohm City", "OHM CITY", 10, 0))
+        self.assertEqual(advance.call_count, 2)
+        self.panel.ap.wait_for_expected_in_system_target.assert_called_once_with("Ohm City")
+
+    def test_equal_names_require_highlight_or_scrollbar_movement_not_background_changes(self):
+        repeated = "RESOURCE EXTRACTION SITE HAZARDOUS"
+        self.panel.screen = mock.Mock(screen_width=1920, screen_height=1080)
+        self.panel.ocr = mock.Mock()
+        self.panel.ocr.image_simple_ocr.return_value = [repeated]
+        row = np.full((30, 700, 3), 255, np.uint8)
+        for new_y, new_scroll_y, expected in ((140, 20, repeated), (100, 35, repeated), (100, 20, None)):
+            with self.subTest(row_y=new_y, scrollbar_y=new_scroll_y):
+                initial = np.zeros((300, 1000, 3), np.uint8)
+                cv2.rectangle(initial, (994, 20), (999, 70), (0, 150, 220), -1)
+                changed = np.zeros_like(initial)
+                cv2.rectangle(changed, (994, new_scroll_y), (999, new_scroll_y + 50), (0, 150, 220), -1)
+                changed[200:250, 50:100] = 255
+                self.panel.ocr.capture_region_pct.side_effect = [initial, changed, changed, changed]
+                self.panel.ocr.solid_highlighted_items.side_effect = [
+                    [(row, 100, y, 700, 30)] for y in (100, new_y, new_y, new_y)
+                ]
+                self.assertEqual(self.panel._selected_destination(), repeated)
+                with mock.patch("panels.navigation.monotonic", side_effect=[0, 0, 1, 2, 3]):
+                    self.assertEqual(self.panel._next_destination(repeated, 10), expected)
 
     def test_unconfirmed_game_target_is_not_success(self):
         self.panel.ap.wait_for_expected_in_system_target.return_value = False
@@ -133,6 +164,45 @@ class StationNavigationTestCase(unittest.TestCase):
 
 
 class NavigationDiagnosticTestCase(unittest.TestCase):
+    def test_near_match_saves_original_ocr_input_once_before_advancing_without_selecting(self):
+        for debug in (True, False):
+            with self.subTest(debug=debug):
+                panel = EDNavigationPanel.__new__(EDNavigationPanel)
+                panel.screen = mock.Mock(screen_width=1920, screen_height=1080)
+                panel.keys = mock.Mock()
+                panel.ocr = mock.Mock()
+                frame = np.full((300, 1000, 3), 7, np.uint8)
+                row = np.full((30, 700, 3), 220, np.uint8)
+                panel.ocr.capture_region_pct.return_value = frame
+                panel.ocr.solid_highlighted_items.return_value = [(row, 100, 100, 700, 30)]
+                panel.ocr.image_simple_ocr.return_value = ["RUCKWELL PHOSPECT"]
+
+                def advance(_current, _deadline):
+                    self.assertEqual(save.call_count, int(debug))
+                    return "RUCKWELL PHOSPECT" if advance_mock.call_count == 1 else None
+
+                with (
+                    mock.patch("panels.navigation.logger.isEnabledFor", return_value=debug),
+                    mock.patch("panels.navigation.save_case") as save,
+                    mock.patch("panels.navigation.monotonic", return_value=0),
+                    mock.patch("panels.navigation.sleep"),
+                    mock.patch.object(panel, "_navigation_tab", return_value=True),
+                    mock.patch.object(panel, "_next_destination", side_effect=advance) as advance_mock,
+                    mock.patch.object(panel, "_save_last_destination_failure"),
+                ):
+                    self.assertFalse(panel._lock_visible_destination("Rockwell Prospect", "ROCKWELL PROSPECT", 10, 0))
+
+                panel.keys.send.assert_called_once_with("UI_Up", hold=5)
+                panel.ocr.capture_region_pct.assert_called_once()
+                if debug:
+                    save.assert_called_once()
+                    category, reason, images = save.call_args.args
+                    self.assertEqual((category, reason), ("navigation-panel", "destination-near-match"))
+                    np.testing.assert_array_equal(images["evaluated"], frame)
+                    np.testing.assert_array_equal(images["name-crop"], panel.ocr.image_simple_ocr.call_args.args[0])
+                else:
+                    save.assert_not_called()
+
     def test_failed_tab_saves_evaluated_image_before_later_panel_context(self):
         panel = EDNavigationPanel.__new__(EDNavigationPanel)
         evaluated = np.full((40, 100, 3), 7, np.uint8)
@@ -167,6 +237,42 @@ class NavigationDiagnosticTestCase(unittest.TestCase):
 
 
 class DestinationNameImageTestCase(unittest.TestCase):
+    def test_border_connected_icon_is_removed_without_erasing_the_first_letter(self):
+        row = np.full((80, 1600, 3), 207, dtype=np.uint8)
+        row[0, :] = 0
+        row[:15, 20] = 0
+        row[14:68, 16:74] = (0, 0, 80)
+        row[24:58, 74:84] = (190, 190, 220)
+        row[25:53, 110:121] = 20
+
+        crop = EDNavigationPanel._destination_name_image(row)
+
+        self.assertTrue(np.all(crop[:, :46] == 207))
+        np.testing.assert_array_equal(crop[:, 46:], row[12:68, 110:1376])
+
+    def test_compact_leading_symbol_is_removed_without_trimming_a_short_first_word(self):
+        for scale in (1, 2):
+            for icon in (True, False):
+                with self.subTest(scale=scale, icon=icon):
+                    row = np.full((80 * scale, 1600 * scale, 3), (0, 160, 220), np.uint8)
+                    if icon:
+                        cv2.circle(row, (90 * scale, 35 * scale), 16 * scale, (0, 0, 0), 2 * scale)
+                        triangle = np.array([[90, 35], [75, 53], [115, 53]], np.int32) * scale
+                        cv2.polylines(row, [triangle], True, (0, 0, 0), 2 * scale)
+                    cv2.putText(
+                        row, "A STATION 20 3 LS", (160 * scale, 50 * scale), 0, 0.9 * scale, (0, 0, 0), 2 * scale
+                    )
+                    before = row.copy()
+                    crop = EDNavigationPanel._destination_name_image(row)
+                    if icon:
+                        padding = 28 * scale
+                        crop = crop[padding:-padding, padding:-padding]
+                    self.assertTrue(np.all(crop[:, : 90 * scale] == (0, 160, 220)))
+                    np.testing.assert_array_equal(
+                        crop[:, 96 * scale :], row[12 * scale : 68 * scale, 160 * scale : 1376 * scale]
+                    )
+                    np.testing.assert_array_equal(row, before)
+
     def test_leading_symbol_is_removed_before_column_crop_clips_its_height(self):
         for scale in (1, 2):
             with self.subTest(scale=scale):
@@ -181,15 +287,49 @@ class DestinationNameImageTestCase(unittest.TestCase):
                 np.testing.assert_array_equal(row, before)
 
     def test_selected_destination_reads_only_name_crop_and_preserves_numeric_name(self):
-        row = np.full((80, 1600, 3), 255, dtype=np.uint8)
         panel = EDNavigationPanel.__new__(EDNavigationPanel)
         panel.screen = mock.Mock(screen_width=1920, screen_height=1080)
         panel.ocr = mock.Mock()
-        panel.ocr.solid_highlighted_items.return_value = [(row, 0, 0, 1600, 80)]
-        panel.ocr.image_simple_ocr.return_value = ["Station", "20", "3", "LS"]
-        self.assertEqual(panel._selected_destination(), "STATION 20 3 LS")
-        image = panel.ocr.image_simple_ocr.call_args.args[0]
-        self.assertEqual(image.shape, (56, 1312, 3))
+        panel.ocr.capture_region_pct.return_value = np.zeros((100, 1600, 3), np.uint8)
+        panel.ocr.image_simple_ocr.return_value = ["0HM", "Station", "20", "3", "LS"]
+        for height, width in ((30, 766), (80, 1600)):
+            with self.subTest(height=height):
+                row = np.full((height, width, 3), 255, dtype=np.uint8)
+                panel.ocr.solid_highlighted_items.return_value = [(row, 0, 0, width, height)]
+                self.assertEqual(panel._selected_destination(), "0HM STATION 20 3 LS")
+                image = panel.ocr.image_simple_ocr.call_args.args[0]
+                crop = EDNavigationPanel._destination_name_image(row)
+                if height == 30:
+                    self.assertGreater(image.shape[0], crop.shape[0])
+                    self.assertGreater(image.shape[1], crop.shape[1])
+                else:
+                    np.testing.assert_array_equal(image, crop)
+
+    def test_short_name_crop_gets_vertical_context_for_ocr(self):
+        row = np.full((30, 766, 3), (200, 200, 200), np.uint8)
+        cv2.putText(row, "OHM CITY", (100, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (20, 20, 20), 1, cv2.LINE_AA)
+        row[[0, -1]] = 0
+        # A low baseline can put the bottom of a glyph below the usual 85% crop.
+        row[23:27, 105:109] = 20
+
+        crop = EDNavigationPanel._destination_name_image(row)
+
+        self.assertEqual(crop.shape[0], 52)
+        self.assertTrue(np.all(crop[:10] == 200))
+        self.assertTrue(np.all(crop[-10:] == 200))
+        ink_y, _ = np.where(crop[:, :, 0] == 20)
+        self.assertEqual(np.ptp(ink_y), np.ptp(np.where(row[:, :, 0] == 20)[0]))
+        self.assertFalse(np.any(crop == 0))
+
+    def test_short_name_crop_uses_luminance_for_colored_selection_marks(self):
+        row = np.full((30, 766, 3), (170, 190, 210), np.uint8)
+        cv2.polylines(row, [np.array([[70, 8], [62, 14], [70, 20]], np.int32)], False, (40, 70, 190), 2)
+
+        crop = EDNavigationPanel._destination_name_image(row)
+
+        expected = cv2.cvtColor(row[2:-2, 30:658], cv2.COLOR_BGR2GRAY)
+        np.testing.assert_array_equal(crop[13:-13, 13:-13], np.repeat(expected[:, :, None], 3, axis=2))
+        self.assertTrue(np.all(crop[:13] == expected[0, 0]))
 
     def test_column_crop_excludes_leading_icons_distance_and_trailing_noise_at_each_scale(self):
         for scale in (1, 2):

@@ -14,13 +14,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Commodity sales use the sell dialog's default maximum without quantity inputs when the request covers all units of that commodity in the hold, including **All**. Smaller fixed quantities remain individually selected, and progress still follows confirmed transactions.
+- Waypoint Assist starts with the same cockpit check and SYS 2 / ENG 4 / WEP 0 power setup as Travel Assist; an unconfirmed distribution shows a message and continues.
+- The default **Wait For Autodock** time after granted docking is now five minutes instead of four.
 
 ### Fixed
 
+- Use ship-specific normal-space turn rates outside supercruise to prevent overlong steering inputs during alignment, including after dropping out for a station approach.
 - Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
 - Odyssey Galaxy Map system-name searches fall back to OCR-checked mouse selection and the right-hand plot button if keyboard plotting does not produce the requested route, with bounded retries and route confirmation before continuing.
-- Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner, allowing the selected station name to reach OCR.
-- Navigation station-name OCR removes complete tall symbols before cropping the name column, preventing clipped icon fragments from becoming false name prefixes.
+- Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner or shortens a selected tab, allowing the selected text to reach OCR.
+- Compass fallback distinguishes slightly colored filled markers from bright ship-hull reflections and rejects texture gaps mistaken for hollow markers. Unconfirmed compass alignment continues only with a detected visible target ring; otherwise the assist sets zero throttle and stops.
+- Dim cockpit panel selections remain recognizable against saturated scenery, preventing premature station-search or docking failures.
+- Navigation station-name OCR removes tall symbols and separated compact leading icons, preventing false extra characters and preserving spaced numeric suffixes.
+- Station searches continue past different rows with identical names, such as resource extraction sites, instead of treating the repeated title as the end of the list.
+- Supercruise station approaches hold 50% throttle until the target ring is acquired and centered before cruising at 75%. If the ring is lost while clearly off course, the assist stops waiting for the exit prompt and realigns instead.
+- A trade dialog that clearly shows a different commodity (for example after the game missed a key press) is closed and the selection corrected by the recognized row offset, re-verifying the new dialog before any trade.
 - Dim blue supercruise disengage lettering now passes the message pre-check instead of leaving only its brighter frame detectable and preventing OCR from starting.
 
 ## [2.1.0] - 2026-11-17

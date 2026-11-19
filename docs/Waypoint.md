@@ -126,6 +126,9 @@ already selected.
 
 The panel search reads the highlighted name from the screen, scrolls through the list and selects the first exact
 match. This screen-reading process is called OCR; you do not need to configure it separately for each station.
+Small destination rows are enlarged before OCR, without substituting similar-looking letters and digits in names.
+Repeated names, such as resource extraction sites, do not by themselves end the search. Highlight or scrollbar
+movement confirms that another same-named row was reached; the assist does not blindly skip unreadable rows.
 Long lists can take longer. The search makes at most two attempts within a two-minute search window;
 closing the panel and checking the selected target can take additional time.
 If the destination cannot be found or confirmed, the assist stops with a message.
@@ -174,6 +177,11 @@ For station-name search or a System Map bookmark, you must already be in the des
 To plot a station in another system without travelling there, you need a Galaxy Map station bookmark.
 
 ### Target checks during flight
+
+On a station approach, Supercruise Assist stays at 50% throttle until the HUD target ring is acquired and centered.
+If the ring is missing at first, the assist retries compass alignment without speeding up. After acquiring the ring,
+it can cruise at 75%. If it loses the ring later, it watches for the exit prompt for up to ten seconds. Two consecutive
+compass readings showing that the ship is off course end the wait early; the assist returns to 50% and realigns.
 
 Before each jump, the assist selects and checks the next system on the route, including intermediate systems.
 A saved route alone is not enough: the active target must match.
@@ -255,8 +263,10 @@ The assist matches the requested ID to the current market, then checks the game'
 name and whether the dialog is buying or selling before submitting a trade. An English catalogue fallback is only
 a display fallback; it never replaces the current market's identity or name.
 It then waits for the game's transaction confirmation before reducing the remaining quantity.
-If a dialog cannot be read, it may close and reopen station services and retry once.
-If the checks still fail, trading stops with a message.
+If the dialog clearly shows a different commodity (for example after the game missed a key press),
+the assist closes the dialog, moves the selection by the recognized row offset and re-verifies the
+new dialog before any trade. If a dialog cannot be read, it may close and reopen station services
+and retry once. If the checks still fail, trading stops with a message.
 
 Requested trading also stops if market services or cargo information cannot be read.
 The route does not guarantee that a market exists or that the station trades your chosen goods.

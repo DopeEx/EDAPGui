@@ -23,6 +23,72 @@ class Keys:
         self.sent.append(key)
 
 
+class RotationProfileTestCase(unittest.TestCase):
+    def setUp(self):
+        self.flight = FlightMixin()
+        self.flight.keys = Mock()
+        self.flight.status = Mock()
+        self.flight.jn = Mock()
+        self.flight.jn.ship_state.return_value = {"type": "anaconda"}
+        self.flight.pitchrate = 14.0
+        self.flight.rollrate = 42.0  # Custom Supercruise setting
+        self.flight.yawrate = 6.0
+
+    def test_six_steering_inputs_switch_profiles_on_dropout_and_reentry(self):
+        for in_supercruise, pitch, roll, yaw in (
+            (True, 14.0, 42.0, 6.0),
+            (False, 25.6, 60.2, 10.5),
+            (True, 14.0, 42.0, 6.0),
+        ):
+            with self.subTest(in_supercruise=in_supercruise):
+                flight = self.flight
+                flight.status.get_flag.return_value = in_supercruise
+                flight.keys.send.reset_mock()
+
+                flight.pitch_up(90)
+                flight.pitch_down(90)
+                flight.rotate_left(90)
+                flight.rotate_right(90)
+                flight.yaw_left(90)
+                flight.yaw_right(90)
+
+                self.assertEqual(
+                    flight.keys.send.call_args_list,
+                    [
+                        call("PitchUpButton", 90 / pitch),
+                        call("PitchDownButton", 90 / pitch),
+                        call("RollLeftButton", hold=90 / roll),
+                        call("RollRightButton", hold=90 / roll),
+                        call("YawLeftButton", hold=90 / yaw),
+                        call("YawRightButton", hold=90 / yaw),
+                    ],
+                )
+                flight.status.get_flag.assert_called_with(FlagsSupercruise)
+
+    def test_normal_space_fsd_correction_uses_the_same_profile(self):
+        flight = self.flight
+        flight.status.get_flag.return_value = False
+        flight.measure_fsd_alignment = Mock(return_value=(0.2, 11.0))
+
+        self.assertTrue(flight.correct_fsd_alignment(None))
+
+        flight.keys.send.assert_called_once()
+        self.assertEqual(flight.keys.send.call_args.args, ("PitchUpButton",))
+        self.assertAlmostEqual(flight.keys.send.call_args.kwargs["hold"], 11.0 * 0.8 / 25.6)
+
+    def test_missing_normal_space_profile_stops_without_a_turn_input(self):
+        flight = self.flight
+        flight.status.get_flag.return_value = False
+        flight.jn.ship_state.return_value = {"type": "unsupported_ship"}
+        flight.notify_user = Mock()
+
+        with self.assertLogs("ed_log", level="WARNING"), self.assertRaisesRegex(EdapInterruptError, "unsupported_ship"):
+            flight.pitch_up(90)
+
+        flight.keys.send.assert_not_called()
+        flight.notify_user.assert_called_once()
+
+
 class SupercruiseEntryTestCase(unittest.TestCase):
     def flight(self):
         flight = FlightMixin()
@@ -305,11 +371,34 @@ class TargetAlignmentTestCase(unittest.TestCase):
     def test_wait_for_disengage_times_out_without_message(self):
         alignment = TargetAlignment()
         alignment.sc_disengage_label_up = lambda scr_reg: False
+        alignment.get_nav_offset = Mock(
+            side_effect=[{"z": -1, "yaw": 170, "pit": 170}, None, {"z": 1, "yaw": 2, "pit": 3}]
+        )
 
-        with patch("routines.flight.sleep"), patch("routines.flight.time.time", side_effect=[0, 1, 11]):
+        with (
+            patch("routines.flight.sleep") as wait,
+            patch("routines.flight.time.monotonic", side_effect=[0, 1, 2, 3, 10]),
+        ):
             self.assertFalse(alignment.wait_for_sc_disengage(None, 10))
 
+        self.assertEqual(wait.call_count, 3)
         self.assertEqual(alignment.keys.sent, [])
+
+    def test_wait_for_disengage_ends_early_on_repeated_off_course_readings(self):
+        for offset in ({"z": -1, "yaw": 170, "pit": 170}, {"z": 1, "yaw": 3, "pit": 18}):
+            with self.subTest(offset=offset):
+                flight = Mock()
+                flight.try_sc_disengage.return_value = False
+                flight.get_nav_offset.return_value = offset
+                with (
+                    patch("routines.flight.sleep") as wait,
+                    patch("routines.flight.time.monotonic", side_effect=[0, 1, 2, 10]),
+                ):
+                    self.assertFalse(FlightMixin.wait_for_sc_disengage(flight, None, 10))
+
+                self.assertEqual(flight.try_sc_disengage.call_count, 2)
+                self.assertEqual(flight.get_nav_offset.call_count, 2)
+                wait.assert_called_once()
 
 
 class DiscoveryScanTestCase(unittest.TestCase):
@@ -342,12 +431,23 @@ class DiscoveryScanTestCase(unittest.TestCase):
 
 
 class JumpRetryTestCase(unittest.TestCase):
+    def target_alignment_flight(self):
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.return_value = True
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        flight.vce = Mock()
+        flight.get_destination_offset = Mock()
+        flight.rollrate = 80.0
+        return flight
+
     def test_target_align_shortens_holds_near_the_target_when_proportional(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 40.0
         flight.yawrate = 24.0
         flight.get_destination_offset.side_effect = [{"x": -100, "y": 20}, {"x": 8, "y": 3}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=10, proportional=True)
@@ -359,11 +459,10 @@ class JumpRetryTestCase(unittest.TestCase):
         self.assertEqual(len(sent), 2)
 
     def test_target_align_keeps_fixed_holds_for_the_reference_ship(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 40.0
         flight.yawrate = 24.0
         flight.get_destination_offset.side_effect = [{"x": -100, "y": 80}, {"x": 8, "y": 3}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=50)
@@ -378,11 +477,10 @@ class JumpRetryTestCase(unittest.TestCase):
             (5.0, 3.0, 0.9, 0.45),  # very sluggish: capped at three times the base hold
         ):
             with self.subTest(pitchrate=pitchrate, yawrate=yawrate):
-                flight = Mock()
+                flight = self.target_alignment_flight()
                 flight.pitchrate = pitchrate
                 flight.yawrate = yawrate
                 flight.get_destination_offset.side_effect = [{"x": -150, "y": 150}, {"x": 8, "y": 3}]
-                flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
                 with patch("routines.flight.sleep"):
                     FlightMixin.fsd_target_align(flight, None, close=50)
@@ -392,11 +490,10 @@ class JumpRetryTestCase(unittest.TestCase):
                 self.assertAlmostEqual(sent["PitchUpButton"], expected_pitch)
 
     def test_target_align_learns_the_step_size_after_an_overshoot(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 5.0
         flight.yawrate = 3.0  # configured as sluggish, but the ship really moves 160 px per second of hold
         flight.get_destination_offset.side_effect = [{"x": 75, "y": 0}, {"x": -69, "y": 0}, {"x": 5, "y": 0}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=50)
@@ -560,10 +657,13 @@ class JumpRetryTestCase(unittest.TestCase):
             self.assertIsNone(FlightMixin.measure_fsd_alignment(flight, None))
 
     def test_correction_pitches_up_proportionally_toward_compass_point(self):
-        flight = Mock()
-        flight.status.get_flag.return_value = False
-        flight.measure_fsd_alignment.return_value = (0.2, 11.0)
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise
+        flight.measure_fsd_alignment = Mock(return_value=(0.2, 11.0))
         flight.pitchrate = 33.0
+        flight.rollrate = 80.0
         flight.yawrate = 8.0
 
         self.assertTrue(FlightMixin.correct_fsd_alignment(flight, None))
@@ -575,10 +675,13 @@ class JumpRetryTestCase(unittest.TestCase):
         self.assertAlmostEqual(hold, 11.0 * 0.8 / 33.0)
 
     def test_correction_yaws_left_and_caps_hold_time(self):
-        flight = Mock()
-        flight.status.get_flag.return_value = False
-        flight.measure_fsd_alignment.return_value = (-20.0, 1.0)
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise
+        flight.measure_fsd_alignment = Mock(return_value=(-20.0, 1.0))
         flight.pitchrate = 33.0
+        flight.rollrate = 80.0
         flight.yawrate = 8.0
 
         FlightMixin.correct_fsd_alignment(flight, None)
@@ -624,12 +727,82 @@ class CompassAlignTestCase(unittest.TestCase):
 
     def test_no_steering_while_the_compass_is_not_visible(self):
         flight = self.flight([None], tries=3)
+        flight.get_destination_offset.return_value = None
 
-        with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
-            self.assertFalse(FlightMixin.nav_align(flight, None))
+        with (
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+        ):
+            FlightMixin.nav_align(flight, None)
 
         for maneuver in ("pitch_up", "pitch_down", "yaw_left", "yaw_right", "rotate_left", "rotate_right"):
             getattr(flight, maneuver).assert_not_called()
+        flight.keys.send.assert_called_once_with("SetSpeedZero")
+        flight.notify_user.assert_called_once()
+
+    def test_unconfirmed_centered_reading_requires_a_visible_target_ring(self):
+        for target in (None, {"x": 20, "y": -10}):
+            with self.subTest(target=target):
+                flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+                flight.compass_confirmed.return_value = False
+                flight.get_destination_offset.return_value = target
+                with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
+                    if target is None:
+                        with self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"):
+                            FlightMixin.nav_align(flight, None)
+                        flight.keys.send.assert_called_once_with("SetSpeedZero")
+                    else:
+                        self.assertFalse(FlightMixin.nav_align(flight, None))
+                        flight.keys.send.assert_not_called()
+                flight.get_destination_offset.assert_called_once_with(None)
+
+    def test_confirmed_compass_does_not_require_a_visible_target_ring(self):
+        flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+        flight.compass_confirmed.return_value = True
+        with patch("routines.flight.sleep"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        flight.get_destination_offset.assert_not_called()
+
+    def test_missing_compass_can_hand_off_to_a_visible_target_ring(self):
+        flight = self.flight([None])
+        flight.get_destination_offset.return_value = {"x": 20, "y": -10}
+        with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        flight.get_destination_offset.assert_called_once_with(None)
+        flight.keys.send.assert_not_called()
+
+    def test_last_steering_attempt_also_requires_compass_confirmation(self):
+        for confirmed in (False, True):
+            with self.subTest(confirmed=confirmed):
+                flight = self.flight(
+                    [
+                        {"z": 1, "x": 0, "y": 0.3, "yaw": 0, "pit": 20, "roll": 0},
+                        {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
+                    ]
+                )
+                flight.compass_confirmed.return_value = confirmed
+                flight.get_destination_offset.return_value = None
+                with patch("routines.flight.sleep"):
+                    if confirmed:
+                        self.assertFalse(FlightMixin.nav_align(flight, None))
+                        flight.get_destination_offset.assert_not_called()
+                    else:
+                        with (
+                            self.assertLogs("ed_log", level="WARNING"),
+                            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+                        ):
+                            FlightMixin.nav_align(flight, None)
+                flight.compass_confirmed.assert_called_once_with(None, 10)
+                flight.pitch_up.assert_called_once_with(20)
+
+    def test_disengage_request_still_ends_compass_alignment_immediately(self):
+        flight = self.flight([])
+        flight.try_sc_disengage.return_value = True
+        with patch("routines.flight.sleep"):
+            self.assertTrue(FlightMixin.nav_align(flight, None, abort_on_disengage=True))
+        flight.read_nav_offset.assert_not_called()
+        flight.get_destination_offset.assert_not_called()
 
     def test_alignment_is_available_after_a_docking_denial(self):
         flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])

@@ -130,7 +130,8 @@ class ScreenRegions:
         # regions with associated filter and color ranges
         # The rect is [L, T, R, B] top left x, y, and bottom right x, y in fraction of screen resolution
         self.reg["compass"] = {
-            "rect": [0.33, 0.65, 0.46, 1.0],
+            # Keep the whole sphere in view when the cockpit HUD shifts left.
+            "rect": [0.30, 0.65, 0.46, 1.0],
             "width": 1,
             "height": 1,
             "filterCB": self.equalize,

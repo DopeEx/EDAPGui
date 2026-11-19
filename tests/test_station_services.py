@@ -311,3 +311,101 @@ class TradeDialogSafetyTestCase(unittest.TestCase):
                 self.services.locale = LocalizationManager(str(paths.LOCALES_DIR), language)
                 self.services.ocr.image_simple_ocr.side_effect = [[title], [name]]
                 self.assertEqual(self.services.trade_dialog_matches("Polymere", False), expected)
+
+    def test_mismatched_dialog_remembers_recognized_commodity_only_with_valid_title(self):
+        for title, name, expected_stored in (
+            ("BUY COMMODITY", "SAMARIUM", "SAMARIUM"),
+            ("BUY COMMODITY", "POLYMERE", None),
+            ("SOMETHING ELSE", "SAMARIUM", None),
+            ("BUY COMMODITY", "", None),
+        ):
+            with self.subTest(title=title, name=name):
+                self.services.ocr.image_simple_ocr.side_effect = [[title], [name]]
+                self.services.trade_dialog_matches("Polymere", False)
+                self.assertEqual(self.services._last_dialog_commodity, expected_stored)
+
+    def test_correction_realigns_cursor_and_reverifies_dialog(self):
+        items = [{"Name_Localised": "Praseodym"}, {"Name_Localised": "Samarium"}, {"Name_Localised": "Silber"}]
+        for recognized, expected_index, direction, delta in (
+            ("SAMARIUM", 2, "UI_Down", 1),
+            ("SILBER", 0, "UI_Up", 2),
+        ):
+            with self.subTest(recognized=recognized):
+                self.services.keys.reset_mock()
+                self.services._last_dialog_commodity = recognized
+                with (
+                    mock.patch.object(self.services, "wait_for_market_list", return_value=True) as wait,
+                    mock.patch.object(self.services, "confirm_trade_dialog", return_value=True) as confirm,
+                ):
+                    self.assertTrue(
+                        self.services.correct_trade_selection(self.services.keys, items, expected_index, "Silber", True)
+                    )
+                wait.assert_called_once_with(True)
+                confirm.assert_called_once_with("Silber", True)
+                calls = self.services.keys.send.call_args_list
+                self.assertEqual(calls[0], mock.call("UI_Back"))
+                self.assertIn(mock.call(direction, hold=0.05, repeat=delta), calls)
+                self.assertEqual(calls[-1], mock.call("UI_Select"))
+
+    def test_correction_requires_an_unambiguous_recognized_commodity(self):
+        items = [{"Name_Localised": "Samarium"}, {"Name_Localised": "Samarium"}, {"Name_Localised": "Silber"}]
+        for recognized, expected_index in (
+            (None, 2),  # dialog was never readable
+            ("GOLD", 2),  # not in the navigated list
+            ("SAMARIUM", 2),  # ambiguous duplicate rows
+            ("SILBER", 2),  # OCR disagrees with the match result
+        ):
+            with self.subTest(recognized=recognized):
+                self.services.keys.reset_mock()
+                self.services._last_dialog_commodity = recognized
+                self.assertFalse(
+                    self.services.correct_trade_selection(self.services.keys, items, expected_index, "Silber", True)
+                )
+                self.services.keys.send.assert_not_called()
+
+    def test_correction_stops_without_trading_when_market_list_is_not_confirmed(self):
+        items = [{"Name_Localised": "Samarium"}, {"Name_Localised": "Silber"}]
+        self.services._last_dialog_commodity = "SAMARIUM"
+        with (
+            mock.patch.object(self.services, "wait_for_market_list", return_value=False),
+            mock.patch.object(self.services, "confirm_trade_dialog") as confirm,
+        ):
+            self.assertFalse(self.services.correct_trade_selection(self.services.keys, items, 1, "Silber", True))
+        confirm.assert_not_called()
+        calls = [call.args[0] for call in self.services.keys.send.call_args_list]
+        self.assertEqual(calls, ["UI_Back"])
+
+    def test_unconfirmed_dialog_attempts_correction_before_raising(self):
+        for selling in (False, True):
+            for corrected in (False, True):
+                with self.subTest(selling=selling, corrected=corrected):
+                    services = self.services
+                    services.keys.reset_mock()
+                    with (
+                        mock.patch.object(services, "confirm_trade_dialog", return_value=False),
+                        mock.patch.object(services, "correct_trade_selection", return_value=corrected) as correct,
+                    ):
+                        if corrected:
+                            result = (
+                                services.sell_commodity(services.keys, "128049197", 2, self.cargo_parser)
+                                if selling
+                                else services.buy_commodity(services.keys, "128049197", 2, 10)
+                            )
+                            self.assertEqual(result, (True, 2))
+                        else:
+                            with self.assertRaises(TradeDialogUnconfirmedError):
+                                if selling:
+                                    services.sell_commodity(services.keys, "128049197", 2, self.cargo_parser)
+                                else:
+                                    services.buy_commodity(services.keys, "128049197", 2, 10)
+                    expected_items = (
+                        services.market_parser.get_sellable_items.return_value
+                        if selling
+                        else services.market_parser.get_buyable_items.return_value
+                    )
+                    expected_index = expected_items.index(
+                        next(item for item in expected_items if str(item.get("id", "")) == "128049197")
+                    )
+                    correct.assert_called_once_with(
+                        services.keys, expected_items, expected_index, "Polymere", selling=selling
+                    )
