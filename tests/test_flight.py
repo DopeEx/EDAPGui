@@ -371,11 +371,34 @@ class TargetAlignmentTestCase(unittest.TestCase):
     def test_wait_for_disengage_times_out_without_message(self):
         alignment = TargetAlignment()
         alignment.sc_disengage_label_up = lambda scr_reg: False
+        alignment.get_nav_offset = Mock(
+            side_effect=[{"z": -1, "yaw": 170, "pit": 170}, None, {"z": 1, "yaw": 2, "pit": 3}]
+        )
 
-        with patch("routines.flight.sleep"), patch("routines.flight.time.time", side_effect=[0, 1, 11]):
+        with (
+            patch("routines.flight.sleep") as wait,
+            patch("routines.flight.time.monotonic", side_effect=[0, 1, 2, 3, 10]),
+        ):
             self.assertFalse(alignment.wait_for_sc_disengage(None, 10))
 
+        self.assertEqual(wait.call_count, 3)
         self.assertEqual(alignment.keys.sent, [])
+
+    def test_wait_for_disengage_ends_early_on_repeated_off_course_readings(self):
+        for offset in ({"z": -1, "yaw": 170, "pit": 170}, {"z": 1, "yaw": 3, "pit": 18}):
+            with self.subTest(offset=offset):
+                flight = Mock()
+                flight.try_sc_disengage.return_value = False
+                flight.get_nav_offset.return_value = offset
+                with (
+                    patch("routines.flight.sleep") as wait,
+                    patch("routines.flight.time.monotonic", side_effect=[0, 1, 2, 10]),
+                ):
+                    self.assertFalse(FlightMixin.wait_for_sc_disengage(flight, None, 10))
+
+                self.assertEqual(flight.try_sc_disengage.call_count, 2)
+                self.assertEqual(flight.get_nav_offset.call_count, 2)
+                wait.assert_called_once()
 
 
 class DiscoveryScanTestCase(unittest.TestCase):
@@ -704,12 +727,82 @@ class CompassAlignTestCase(unittest.TestCase):
 
     def test_no_steering_while_the_compass_is_not_visible(self):
         flight = self.flight([None], tries=3)
+        flight.get_destination_offset.return_value = None
 
-        with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
-            self.assertFalse(FlightMixin.nav_align(flight, None))
+        with (
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+        ):
+            FlightMixin.nav_align(flight, None)
 
         for maneuver in ("pitch_up", "pitch_down", "yaw_left", "yaw_right", "rotate_left", "rotate_right"):
             getattr(flight, maneuver).assert_not_called()
+        flight.keys.send.assert_called_once_with("SetSpeedZero")
+        flight.notify_user.assert_called_once()
+
+    def test_unconfirmed_centered_reading_requires_a_visible_target_ring(self):
+        for target in (None, {"x": 20, "y": -10}):
+            with self.subTest(target=target):
+                flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+                flight.compass_confirmed.return_value = False
+                flight.get_destination_offset.return_value = target
+                with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
+                    if target is None:
+                        with self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"):
+                            FlightMixin.nav_align(flight, None)
+                        flight.keys.send.assert_called_once_with("SetSpeedZero")
+                    else:
+                        self.assertFalse(FlightMixin.nav_align(flight, None))
+                        flight.keys.send.assert_not_called()
+                flight.get_destination_offset.assert_called_once_with(None)
+
+    def test_confirmed_compass_does_not_require_a_visible_target_ring(self):
+        flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+        flight.compass_confirmed.return_value = True
+        with patch("routines.flight.sleep"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        flight.get_destination_offset.assert_not_called()
+
+    def test_missing_compass_can_hand_off_to_a_visible_target_ring(self):
+        flight = self.flight([None])
+        flight.get_destination_offset.return_value = {"x": 20, "y": -10}
+        with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        flight.get_destination_offset.assert_called_once_with(None)
+        flight.keys.send.assert_not_called()
+
+    def test_last_steering_attempt_also_requires_compass_confirmation(self):
+        for confirmed in (False, True):
+            with self.subTest(confirmed=confirmed):
+                flight = self.flight(
+                    [
+                        {"z": 1, "x": 0, "y": 0.3, "yaw": 0, "pit": 20, "roll": 0},
+                        {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
+                    ]
+                )
+                flight.compass_confirmed.return_value = confirmed
+                flight.get_destination_offset.return_value = None
+                with patch("routines.flight.sleep"):
+                    if confirmed:
+                        self.assertFalse(FlightMixin.nav_align(flight, None))
+                        flight.get_destination_offset.assert_not_called()
+                    else:
+                        with (
+                            self.assertLogs("ed_log", level="WARNING"),
+                            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+                        ):
+                            FlightMixin.nav_align(flight, None)
+                flight.compass_confirmed.assert_called_once_with(None, 10)
+                flight.pitch_up.assert_called_once_with(20)
+
+    def test_disengage_request_still_ends_compass_alignment_immediately(self):
+        flight = self.flight([])
+        flight.try_sc_disengage.return_value = True
+        with patch("routines.flight.sleep"):
+            self.assertTrue(FlightMixin.nav_align(flight, None, abort_on_disengage=True))
+        flight.read_nav_offset.assert_not_called()
+        flight.get_destination_offset.assert_not_called()
 
     def test_alignment_is_available_after_a_docking_denial(self):
         flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])

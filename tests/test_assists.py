@@ -16,6 +16,7 @@ from core.constants import (
 from core.types import EdapInterruptError, FsdAssistResult, ScTargetAlignReturn
 from routines.afk_combat import AfkCombat
 from routines.assists import AFK_COMBAT_POLL_INTERVAL, AssistsMixin
+from routines.flight import FlightMixin
 
 
 class Assists(AssistsMixin):
@@ -521,12 +522,117 @@ class ScAssistStatusTestCase(unittest.TestCase):
         self.assertEqual(statuses, ["Align", "SC to Target", "Approaching target", "Docking Complete"])
         assists.dock.assert_called_once_with(None)
 
+    def test_unconfirmed_alignment_does_not_accelerate_or_start_target_approach(self):
+        assists, statuses = self.make_assists("SC to Target")
+        assists.nav_align = FlightMixin.nav_align.__get__(assists)
+        assists.config = {"NavAlignTries": 1}
+        assists.read_nav_offset = Mock(return_value={"z": 1, "yaw": 0, "pit": 0})
+        assists.compass_confirmed = Mock(return_value=False)
+        assists.get_destination_offset = Mock(return_value=None)
+        assists.notify_user = Mock()
+
+        with (
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+        ):
+            self.run_sc_assist(assists)
+
+        self.assertEqual(statuses, ["Align"])
+        self.assertEqual(assists.keys.send.call_args_list, [call("SetSpeed50"), call("SetSpeedZero")])
+        assists.sc_target_align.assert_not_called()
+        assists.dock.assert_not_called()
+
     def test_waypoint_station_name_is_kept_for_the_cruise_phase(self):
         assists, statuses = self.make_assists("SC to Station: Jameson Memorial")
 
         self.run_sc_assist(assists)
 
         self.assertEqual(statuses[:2], ["Align", "SC to Station: Jameson Memorial"])
+
+    def test_initial_ring_miss_keeps_alignment_throttle_until_target_is_centered(self):
+        assists, _ = self.make_assists("SC to Target")
+        timeline = Mock()
+        timeline.align.side_effect = [
+            ScTargetAlignReturn.Lost,
+            ScTargetAlignReturn.Found,
+            ScTargetAlignReturn.Disengage,
+        ]
+        assists.sc_target_align = timeline.align
+        assists.keys.send = timeline.throttle
+        timeline.compass.return_value = False
+        assists.nav_align = timeline.compass
+        assists.wait_for_sc_disengage = Mock(return_value=False)
+        assists.interdiction_check = Mock(return_value=False)
+        assists.try_sc_disengage = Mock(return_value=False)
+
+        self.run_sc_assist(assists)
+
+        self.assertEqual(
+            timeline.mock_calls,
+            [
+                call.throttle("SetSpeed50"),
+                call.compass(None),
+                call.align(None),
+                call.compass(None, abort_on_disengage=True),
+                call.align(None),
+                call.throttle("SetSpeed75"),
+                call.align(None),
+                call.throttle("SetSpeedZero"),
+            ],
+        )
+        assists.wait_for_sc_disengage.assert_not_called()
+
+    def test_lost_cruise_target_preserves_exit_prompt_before_realigning(self):
+        assists, _ = self.make_assists("SC to Target")
+        assists.sc_target_align.side_effect = [ScTargetAlignReturn.Found, ScTargetAlignReturn.Lost]
+        assists.wait_for_sc_disengage = Mock(return_value=True)
+        assists.interdiction_check = Mock(return_value=False)
+        assists.try_sc_disengage = Mock(return_value=False)
+
+        self.run_sc_assist(assists)
+
+        assists.wait_for_sc_disengage.assert_called_once_with(None, 10)
+        assists.nav_align.assert_called_once_with(None)
+        self.assertEqual(
+            assists.keys.send.call_args_list, [call("SetSpeed50"), call("SetSpeed75"), call("SetSpeedZero")]
+        )
+
+    def test_lost_cruise_target_realigns_at_50_and_stays_there_after_reacquisition(self):
+        assists, _ = self.make_assists("SC to Target")
+        timeline = Mock()
+        timeline.align.side_effect = [
+            ScTargetAlignReturn.Found,
+            ScTargetAlignReturn.Lost,
+            ScTargetAlignReturn.Found,
+            ScTargetAlignReturn.Disengage,
+        ]
+        timeline.compass.return_value = False
+        timeline.wait.return_value = False
+        assists.sc_target_align = timeline.align
+        assists.keys.send = timeline.throttle
+        assists.nav_align = timeline.compass
+        assists.wait_for_sc_disengage = timeline.wait
+        assists.interdiction_check = Mock(return_value=False)
+        assists.try_sc_disengage = Mock(return_value=False)
+
+        self.run_sc_assist(assists)
+
+        self.assertEqual(
+            timeline.mock_calls,
+            [
+                call.throttle("SetSpeed50"),
+                call.compass(None),
+                call.align(None),
+                call.throttle("SetSpeed75"),
+                call.align(None),
+                call.wait(None, 10),
+                call.throttle("SetSpeed50"),
+                call.compass(None, abort_on_disengage=True),
+                call.align(None),
+                call.align(None),
+                call.throttle("SetSpeedZero"),
+            ],
+        )
 
     def test_target_without_docking_reports_arrival(self):
         assists, statuses = self.make_assists("SC to Target", drop_type="$USS_Type_Ceremonial;")

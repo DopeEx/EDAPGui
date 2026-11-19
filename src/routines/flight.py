@@ -53,6 +53,7 @@ NAV_ALIGN_LOST_READS = 4
 NAV_ALIGN_LOST_DELAY = 0.5
 NAV_ALIGN_MAX_REROLLS = 2
 NAV_ALIGN_REROLL_YAW = 30
+NAV_ALIGN_CLOSE_DEG = 10
 
 SUPERCRUISE_START_TIMEOUT = 30.0
 SUPERCRUISE_ENTRY_TIMEOUT = 60.0
@@ -156,7 +157,7 @@ class FlightMixin:
         self._align_for_docking(scr_reg)
         self.keys.send("SetSpeed50")
 
-        sleep(12)
+        sleep(14)
         # Distance is not measured; a Distance denial triggers another checked approach.
         self.keys.send("SetSpeedZero", repeat=2)
         sleep(3)  # Wait for ship to come to stop
@@ -263,12 +264,20 @@ class FlightMixin:
             self.keys.send("PitchDownButton", state=0)
 
     def wait_for_sc_disengage(self, scr_reg, seconds) -> bool:
-        """Wait up to the given seconds, keeping watch for the disengage prompt.
-        Returns True if the supercruise exit was requested."""
-        end = time.time() + seconds
-        while time.time() < end:
+        """Watch for the exit prompt after ring loss, unless the compass confirms a turn is needed."""
+        end = time.monotonic() + seconds
+        off_course_reads = 0
+        while time.monotonic() < end:
             if self.try_sc_disengage(scr_reg):
                 return True
+            off = self.get_nav_offset(scr_reg)
+            if off is not None and (off["z"] < 0 or max(abs(off["yaw"]), abs(off["pit"])) > NAV_ALIGN_CLOSE_DEG):
+                off_course_reads += 1
+                if off_course_reads >= 2:
+                    logger.debug("SC target loss: ending disengage wait for confirmed off-course compass: %s", off)
+                    return False
+            else:
+                off_course_reads = 0
             sleep(0.2)
         return False
 
@@ -304,9 +313,10 @@ class FlightMixin:
         """Use the compass to find the nav point position.  Will then perform rotation and pitching
         to put the nav point in the middle of the compass, i.e. target right in front of us.
         With abort_on_disengage the alignment is cancelled as soon as the supercruise exit was requested,
-        and True is returned."""
+        and True is returned. Otherwise returns False after compass confirmation or a visible target-ring
+        fallback. Stops the assist if neither can be verified."""
 
-        close = 10  # in degrees
+        close = NAV_ALIGN_CLOSE_DEG
         if self.jn.ship_state()["status"] not in ("in_supercruise", "in_space", "dockingdenied"):
             logger.error("align=err1, nav_align not in super or space")
             raise Exception("nav_align not in super or space")
@@ -321,14 +331,14 @@ class FlightMixin:
             off = self.read_nav_offset(scr_reg)
             if off is None:
                 # Never steer without a reading: a guessed position turns the ship away from the target
-                logger.warning("Compass Align: compass or nav point not visible, alignment stopped.")
-                return False
+                logger.debug("Compass Align: compass or nav point not visible, compass steering stopped.")
+                break
             logger.debug(f"Compass align try {ii + 1}: {off}")
 
             # Check if we are close enough already; the nav point flickers, so the reading must be confirmed
             if abs(off["yaw"]) < close and abs(off["pit"]) < close:
                 if self.compass_confirmed(scr_reg, close):
-                    break
+                    return False
                 logger.debug("Compass align: centered reading not confirmed, aligning again.")
                 continue
 
@@ -404,7 +414,16 @@ class FlightMixin:
                 continue
             sleep(0.1)
             logger.debug("final x:" + str(off["x"]) + " y:" + str(off["y"]))
-        return False
+            if abs(off["yaw"]) < close and abs(off["pit"]) < close and self.compass_confirmed(scr_reg, close):
+                return False
+
+        if self.get_destination_offset(scr_reg) is not None:
+            logger.warning("Compass alignment unconfirmed; continuing with the visible target ring.")
+            return False
+        self.keys.send("SetSpeedZero")
+        logger.warning("Compass alignment unconfirmed and no target ring detected. Flight assist stopped.")
+        self.notify_user("Could not confirm target alignment. Flight assist stopped; take control of the ship.")
+        raise RuntimeError("Flight assist stopped (target alignment unconfirmed)")
 
     def fsd_target_align(self, scr_reg, close=50, allow_starting_hyperspace=False, proportional=False):
         """Coarse align to the target to support FSD jumping.
@@ -564,7 +583,7 @@ class FlightMixin:
         if off is None:
             logger.debug("sc_target_align not finding target")
             self.dump_target_debug()
-            self.ap_ckb("log", "Target not found, terminating SC Assist")
+            self.ap_ckb("log", "Target lost, attempting re-alignment.")
             return ScTargetAlignReturn.Lost
 
         while (abs(off["x"]) > close) or (abs(off["y"]) > close):

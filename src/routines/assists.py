@@ -398,30 +398,30 @@ class AssistsMixin:
         self.set_ap_status("Align")
         self.keys.send("SetSpeed50")
         self.nav_align(scr_reg)  # Compass Align
-        # The target is ahead now, so cruise at 75%, where ships handle best in supercruise.
-        self.keys.send("SetSpeed75")
         self.set_ap_status(cruise_status)
 
         self.jn.ship_state()["interdicted"] = False
+        target_acquired = False
 
         # Loop forever keeping tight align to target, until we get SC Disengage popup
         self.ap_ckb("log+vce", "Target Align")
         while True:
             sleep(0.05)
             if self.jn.ship_state()["status"] == "in_supercruise":
-                # Align and stay on target. If false is returned, we have lost the target behind us.
                 align_res = self.sc_target_align(scr_reg)
                 if align_res == ScTargetAlignReturn.Lost:
-                    # Continue ahead before aligning to prevent us circling the target.
-                    # The target ring changes shortly before arrival, so keep watching for the disengage prompt.
-                    if self.wait_for_sc_disengage(scr_reg, 10):
-                        break
-                    self.keys.send("SetSpeed50")
+                    if target_acquired:
+                        # The ring can disappear just before the exit prompt, even on a good course.
+                        if self.wait_for_sc_disengage(scr_reg, 10):
+                            break
+                        self.keys.send("SetSpeed50")
                     if self.nav_align(scr_reg, abort_on_disengage=True):  # Compass Align
                         break
 
                 elif align_res == ScTargetAlignReturn.Found:
-                    pass
+                    if not target_acquired:
+                        target_acquired = True
+                        self.keys.send("SetSpeed75")
 
                 elif align_res == ScTargetAlignReturn.Disengage:
                     break

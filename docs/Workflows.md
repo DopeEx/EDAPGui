@@ -206,6 +206,12 @@ than their surroundings in at least seven of eight directions. A single such cor
 low-saturation blob; multiple cores are treated as unknown. The existing white-marker path remains available for
 glare and rim cases where the marker touches other bright surfaces; its saturation limits are unchanged.
 
+Compass alignment requires repeated centered readings, including after the last steering attempt. If confirmation
+fails or the marker disappears, it can hand off to target-ring alignment only when the visible-ring detector
+independently finds a target. Otherwise it sets zero throttle, notifies the user and stops the assist.
+The return value of `nav_align()` still reports a requested supercruise exit, not alignment success.
+Normal-space station approaches retain their stricter compass confirmation before moving closer.
+
 Set **Debug > Log level > Debug** before reproducing a recognition problem. Normal technical messages remain in
 `user_data/logs/autopilot.log`; the complete technical log, including those messages and debug details, is written to
 `user_data/debug/debug.log` while Debug is enabled. Both logs rotate separately in their respective folders on the first use of each log in a
@@ -390,6 +396,14 @@ These are deferred improvements for future consideration.
   avoidance only once a reliable direction away from the planet and suitable in-game validation are available.
 - Assess HUD distance OCR for feedback-controlled station approaches instead of timed forward flight. Deferred
   until its reliability across resolutions, HUD colors and languages has been evaluated; not used by current approaches.
+- Evaluate using the game's built-in Supercruise Assist for eligible in-system destinations when the ship has the
+  module fitted. Verify how EDFC can confirm activation and arrival, and define when to use EDFC's own approach
+  instead if the module is unavailable or cannot be engaged.
+- Defer automatic recovery from the supercruise "loop of shame" until a naturally occurring case is captured in
+  the debug log. After an overshoot, look for a target that stays off-center across several turn corrections
+  despite reliable compass readings, rather than assuming a slow turn or a momentary ring loss is a loop.
+  Evaluate whether temporarily reducing throttle to 25% breaks the loop without disrupting normal recovery or
+  missing the disengage prompt.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
   Bookmarks remain an alternative when a destination cannot be read reliably.
 - Avoid changing hyperspace-interdiction recovery until there is a reliable way to validate it. Interdiction attempts

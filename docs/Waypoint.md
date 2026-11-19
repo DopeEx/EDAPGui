@@ -175,6 +175,11 @@ To plot a station in another system without travelling there, you need a Galaxy 
 
 ### Target checks during flight
 
+On a station approach, Supercruise Assist stays at 50% throttle until the HUD target ring is acquired and centered.
+If the ring is missing at first, the assist retries compass alignment without speeding up. After acquiring the ring,
+it can cruise at 75%. If it loses the ring later, it watches for the exit prompt for up to ten seconds. Two consecutive
+compass readings showing that the ship is off course end the wait early; the assist returns to 50% and realigns.
+
 Before each jump, the assist selects and checks the next system on the route, including intermediate systems.
 A saved route alone is not enough: the active target must match.
 If the target or supercruise state cannot be confirmed, the assist sets throttle to zero and stops with a message
