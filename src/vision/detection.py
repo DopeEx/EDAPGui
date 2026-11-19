@@ -154,14 +154,89 @@ class DetectionMixin:
         dim = DetectionMixin._best_white_blob(hsv, dim_mask, center, radius, max(4, round(25 * area_scale)))
         if dim is not None:
             candidates.append(dim)
-        if not any(candidate[2] for candidate in candidates):
-            ring = DetectionMixin._navpoint_ring_hole(hsv, center, radius)
-            if ring is not None:
-                return ring[0], ring[1], True
-        if not candidates:
+        hollow = [candidate for candidate in candidates if candidate[2]]
+        if hollow:
+            best = max(hollow, key=lambda c: c[3])
+            return best[0], best[1], True
+        ring = DetectionMixin._navpoint_ring_hole(hsv, center, radius)
+        if ring is not None:
+            return ring[0], ring[1], True
+        filled = DetectionMixin._contrasting_filled_navpoints(hsv, center, radius, inside)
+        if len(filled) == 1:
+            return filled[0][0], filled[0][1], False
+        if filled:
             return None
-        best = max(candidates, key=lambda c: c[3])
-        return best[0], best[1], best[2]
+        if candidates:
+            best = max(candidates, key=lambda c: c[3])
+            return best[0], best[1], False
+        ring = DetectionMixin._cyan_navpoint_ring(compass_image, center, radius, inside)
+        if ring is not None:
+            logger.debug("Compass hollow marker found in cyan contrast at %s", ring)
+            return ring[0], ring[1], True
+        return None
+
+    @staticmethod
+    def _cyan_navpoint_ring(image, center, radius, inside):
+        """Recover a hollow marker whose luminance merges with a warm cockpit reflection."""
+        blue, green, red = image[..., 0], image[..., 1], image[..., 2]
+        cyan = cv2.subtract(cv2.min(blue, green), red)
+        mask = ((cyan >= 5) & inside).astype(np.uint8)
+        # Group antialiased rim fragments, but measure the ring and its hole on the original pixels.
+        size = max(3, 2 * round(radius * 0.04) + 1)
+        joined = cv2.dilate(mask, np.ones((size, size), dtype=np.uint8))
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(joined)
+        candidates = []
+        for index, (x, y, width, height, _) in enumerate(stats[1:], 1):
+            if max(width, height) - size + 1 > radius * 0.35:
+                continue
+            ys, xs = np.nonzero((labels[y : y + height, x : x + width] == index) & mask[y : y + height, x : x + width])
+            rim_width, rim_height = np.ptp(xs) + 1, np.ptp(ys) + 1
+            diameter = max(rim_width, rim_height)
+            if not (
+                min(rim_width, rim_height) >= max(5, radius * 0.18) and min(rim_width, rim_height) >= 0.75 * diameter
+            ):
+                continue
+            cx, cy = x + (xs.min() + xs.max()) / 2, y + (ys.min() + ys.max()) / 2
+            if math.hypot(cx - center[0], cy - center[1]) > radius * 0.9:
+                continue
+            dx, dy = xs + x - cx, ys + y - cy
+            distance = np.hypot(dx, dy)
+            if distance.min() < diameter * 0.24 or distance.max() > diameter * 0.65:
+                continue
+            sectors = np.rint(np.arctan2(dy, dx) * (4 / np.pi)).astype(int) % 8
+            strong = cyan[ys + y, xs + x] >= 10
+            if len(np.unique(sectors)) >= 7 and len(np.unique(sectors[strong])) >= 6:
+                candidates.append((float(cx), float(cy)))
+        return candidates[0] if len(candidates) == 1 else None
+
+    @staticmethod
+    def _contrasting_filled_navpoints(hsv, center, radius, inside):
+        """Find compact bright cores above their local background, not broad hull reflections."""
+        value = hsv[..., 2]
+        size = max(5, round(radius * 0.35) // 2 * 2 + 1)
+        background = cv2.morphologyEx(value, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
+        mask = ((hsv[..., 1] < 110) & (value > 140) & (cv2.subtract(value, background) >= 25) & inside).astype(np.uint8)
+        _, _, stats, centroids = cv2.connectedComponentsWithStats(mask)
+        candidates = []
+        for (_, _, width, height, area), (cx, cy) in zip(stats[1:], centroids[1:]):
+            if not (
+                area >= max(4, round(25 * (radius / 55) ** 2))
+                and max(width, height) <= radius * 0.35
+                and 0.6 <= width / height <= 1.6
+                and area >= width * height * 0.5
+                and math.hypot(cx - center[0], cy - center[1]) <= radius * 1.05
+            ):
+                continue
+            angles = np.arange(8) * np.pi / 4
+            sample_radius = max(width, height) / 2 + 1
+            xs = np.rint(cx + np.cos(angles) * sample_radius).astype(int)
+            ys = np.rint(cy + np.sin(angles) * sample_radius).astype(int)
+            if (xs < 0).any() or (ys < 0).any() or (xs >= value.shape[1]).any() or (ys >= value.shape[0]).any():
+                continue
+            contrast = float(value[round(cy), round(cx)]) - value[ys, xs].astype(float)
+            if np.count_nonzero(contrast >= 25) >= 7:
+                candidates.append((float(cx), float(cy)))
+        return candidates
 
     @staticmethod
     def _navpoint_ring_hole(hsv, center, radius):
@@ -178,9 +253,13 @@ class DetectionMixin:
             _x, _y, width, height = cv2.boundingRect(contour)
             if not (
                 max(3, radius * 0.07) <= min(width, height)
-                and max(width, height) <= radius * 0.23
+                and max(width, height) <= radius * 0.25
                 and 0.7 <= width / height <= 1.4
             ):
+                continue
+            # Axis-aligned bounds can make a diagonal hull crack look round.
+            long_side, short_side = sorted(cv2.minAreaRect(contour)[1], reverse=True)
+            if short_side < long_side * 0.7:
                 continue
             moments = cv2.moments(contour)
             if moments["m00"] < 0.3 * width * height:

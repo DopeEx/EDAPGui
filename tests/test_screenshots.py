@@ -51,6 +51,7 @@ MARKET_LIST_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*market-list*.png"))
 GALAXY_MAP_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*galaxy-map*.png")))
 NAV_PANEL_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*nav-panel*.png")))
 INTERNAL_PANEL_SCREENSHOTS = tuple(sorted(SCREENSHOTS.glob("*p/*internal-panel*.png")))
+NAVIGATION_FAILURES = SCREENSHOTS / "diagnostics" / "navigation-failures-20261118"
 
 
 def screenshot_language(path):
@@ -122,6 +123,40 @@ class Detector(DetectionMixin):
         self.cv_frames = CvFrames()
 
     ocr = NoOcr()
+
+
+class CompassFailureScreenshotTestCase(unittest.TestCase):
+    def test_panther_hollow_marker_over_cockpit_glare(self):
+        path = SCREENSHOTS / "diagnostics" / "compass" / "01_compass-behind_panther-hull-glare-context.png"
+        if not path.is_file():
+            self.skipTest("local Panther compass diagnostic context unavailable")
+        screenshot = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        # The doubled compass ROI was clipped at the bottom of the original frame.
+        screenshot[513:1080, 423:1037] = load_screenshot(path)
+        regions = ScreenRegions(ScreenshotScreen(screenshot), ImageTemplates(1080))
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+        assert offset is not None, "the visible hollow marker was not detected"
+        self.assertEqual(offset["z"], -1.0)
+        self.assertLess(abs(offset["x"]), 0.12)
+        self.assertTrue(-0.5 < offset["y"] < -0.25, offset)
+
+    def test_left_shifted_compass_is_detected_instead_of_radar(self):
+        path = NAVIGATION_FAILURES / "12_compass_radar-false-match-context_de.png"
+        if not path.is_file():
+            self.skipTest("local compass diagnostic context unavailable")
+        context = load_screenshot(path)
+        height, width = context.shape[:2]
+        screenshot = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        # The expanded diagnostic crop originally started at (508, 513) in the 1080p frame.
+        screenshot[513 : 513 + height, 508 : 508 + width] = context
+        regions = ScreenRegions(ScreenshotScreen(screenshot), ImageTemplates(1080))
+        with patch.object(Detector, "dump_compass_debug"):
+            offset = Detector().get_nav_offset(regions)
+        assert offset is not None, "the visible compass marker was not detected"
+        self.assertEqual(offset["z"], 1.0)
+        self.assertLess(abs(offset["x"]), 0.1)
+        self.assertLess(abs(offset["y"]), 0.1)
 
 
 def screenshots():

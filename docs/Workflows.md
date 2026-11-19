@@ -183,7 +183,8 @@ path so a recognized visible ring is not treated as missing. Targets obscured by
 HUD elements can still require compass realignment. Visible and occluded target searches start higher in the HUD
 to include rings near the previous upper boundary.
 
-Compass marker fallback uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
+The compass search extends left to keep the sphere in view when the cockpit HUD shifts. Compass marker fallback
+uses sphere-relative pixel areas for 1080p and 4K and checks both bright and dim,
 low-saturation markers. Hollow markers are preferred over filled charging glow; small antialiased ring centers
 are checked separately so a behind marker is not mistaken for an ahead dot. A rejected filled-template match
 cannot validate a weak behind-template match. A filled-blob fallback that disagrees with the template direction
@@ -194,7 +195,16 @@ recognition path for SDR/HDR and both HUD color schemes, not a
 resolution-specific mode. Real monitor/HDR and HUD-brightness combinations still require in-game validation.
 If a dim hollow marker merges with the compass rim or charging glow, an additional fallback checks for one
 compact dark hole with a brighter surrounding ring. It requires contrast in at least seven of eight directions
-and rejects multiple candidate holes rather than guessing a position.
+and a compact hole regardless of its orientation; diagonal ship-hull texture gaps must not turn a filled marker
+into a behind reading. Hollow markers can be up to 0.25 of the compass radius in their longest dimension, covering
+slightly wider bottom-rim markers while retaining the shape and contrast checks. It rejects multiple candidate holes
+rather than guessing a position.
+
+For filled markers, a separate local-contrast pass also accepts slightly saturated bright cores. A morphological
+background estimate removes broad reflections; candidates must be compact, sphere-relative in size and brighter
+than their surroundings in at least seven of eight directions. A single such core takes priority over an ordinary
+low-saturation blob; multiple cores are treated as unknown. The existing white-marker path remains available for
+glare and rim cases where the marker touches other bright surfaces; its saturation limits are unchanged.
 
 Set **Debug > Log level > Debug** before reproducing a recognition problem. Normal technical messages remain in
 `user_data/logs/autopilot.log`; the complete technical log, including those messages and debug details, is written to
@@ -270,8 +280,8 @@ and is excluded from Git along with the rest of `user_data/`.
   with 1.5 times its width and height (clipped at screen edges). The search region and matching behavior stay unchanged.
   While Debug is enabled, each target search captures the larger region; images are saved only for a diagnostic case.
   The target can still lie outside the context; this is not a full screenshot.
-- Missing compasses and weak nav-point matches save the evaluated image and a larger same-frame context. The search
-  itself still uses the original region. The larger capture is used only while Debug is enabled.
+- Missing compasses and weak nav-point matches save the evaluated image and a larger same-frame context. Matching
+  uses the same search region with or without Debug; the extra context is captured only when Debug is enabled.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
 - Odyssey Galaxy Map name searches save full game-window snapshots in `user_data/debug/galaxy-map/` only for

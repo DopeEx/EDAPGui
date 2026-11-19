@@ -28,3 +28,9 @@ are a starting point: ship rotation is slower in supercruise, so check and tune 
 
 The rates are stored per ship in `user_data/configs/ship_configs.json` and loaded when the active ship changes. The
 optional **SunPitchUp +/- Time** field can adjust pitch time for ships that need more clearance from a star.
+
+## Compass recognition during alignment
+
+The hollow compass marker means the target is behind the ship. When cockpit glare hides the marker in the
+brightness-based search, EDFC can recover it from a single compact cyan rim with a clear center. An unconfirmed
+compass reading still does not provide a steering direction.
