@@ -10,6 +10,7 @@ from unittest import mock
 from core import paths
 from core.types import FsdAssistResult
 from panels.station_services import TradeDialogUnconfirmedError
+from routines.assists import AssistsMixin
 from routines.waypoints import EDWayPoint
 
 GLOBAL_LIST = {
@@ -344,6 +345,47 @@ class GetWaypointTestCase(unittest.TestCase):
         self.assertEqual(wp.waypoints, previous)
         self.assertEqual(wp.step, previous_step)
         self.assertTrue(wp.progress_error)
+
+
+class WaypointStartupTestCase(unittest.TestCase):
+    def setUp(self):
+        self.wp = new_waypoints({"1": stop("Sol")})
+        self.ap = self.wp.ap = AssistsMixin()
+        for attribute in ("ap_ckb", "jn", "keys", "notify_user", "set_ap_status", "ship_control", "status"):
+            setattr(self.ap, attribute, mock.Mock())
+        self.ap.total_dist_jumped = 0
+        self.ap.jn.ship_state.return_value = {
+            "cur_star_system": "Sol",
+            "cur_station": "",
+            "cur_station_type": "",
+        }
+        self.ap.status.get_cleaned_data.return_value = {"Destination_Body": 0, "Destination_Name": ""}
+        self.wp.get_waypoint = mock.Mock(return_value=(None, None))
+
+    def test_pips_are_checked_before_processing_waypoints_even_if_unconfirmed(self):
+        with mock.patch("routines.assists.set_power_distribution", return_value=False) as power:
+
+            def get_waypoint():
+                power.assert_called_once_with(self.ap.keys, self.ap.status, "engine", skip_if_set=True)
+                return None, None
+
+            self.wp.get_waypoint.side_effect = get_waypoint
+            self.wp.waypoint_assist(self.ap.keys, mock.Mock())
+
+        self.ap.ship_control.goto_cockpit_view.assert_called_once_with(timeout=5.0)
+        self.ap.notify_user.assert_called_once_with(
+            "Power distribution could not be confirmed. Waypoint Assist will continue."
+        )
+        self.wp.get_waypoint.assert_called_once()
+
+    def test_unconfirmed_cockpit_stops_before_pips_or_waypoint_processing(self):
+        self.ap.ship_control.goto_cockpit_view.return_value = False
+        with mock.patch("routines.assists.set_power_distribution") as power:
+            self.wp.waypoint_assist(self.ap.keys, mock.Mock())
+
+        power.assert_not_called()
+        self.wp.get_waypoint.assert_not_called()
+        self.assertFalse(self.wp.executing)
 
 
 class WaypointBookmarkSelectionTestCase(unittest.TestCase):

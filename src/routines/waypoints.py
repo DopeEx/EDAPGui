@@ -1066,6 +1066,8 @@ class EDWayPoint:
         if len(self.waypoints) == 0:
             self.ap.ap_ckb("log+vce", "No Waypoint file loaded. Exiting Waypoint Assist.")
             return
+        if not self.ap.prepare_travel_power("Waypoint Assist"):
+            return
 
         self.step = 0  # start at first waypoint
         self.ap.ap_ckb("log", "Waypoint file: " + str(Path(self.filename).name))

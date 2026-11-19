@@ -31,7 +31,8 @@ This document summarizes the behavior currently implemented and lists a small nu
    approaching. Missing or unconfirmed alignment stops the approach with zero throttle and a user message.
    This also applies to Waypoint station approaches and is repeated before moving closer after a docking denial
    due to distance. Forward approach segments remain time-based; station distance is not measured.
-   It requests docking through the Navigation panel and waits for the docking computer.
+   It requests docking through the Navigation panel and waits up to five minutes by default for the docking computer
+   (configurable in Settings > Wait For Autodock).
    It confirms panel focus and the selected Contacts tab before sending the docking inputs. Tab changes are sent
    individually and checked again; unreadable highlights do not trigger blind switching. If confirmation times out,
    the docking attempt stops with an error instead of retrying selection in an unknown tab.
@@ -52,6 +53,8 @@ they are departure checks, not collision avoidance during travel.
 
 1. Loads the route selected in the Waypoints tab and visits its stops in order, skipping inactive and completed stops.
    Older route files must first be imported through **Import... > Legacy JSON...** and saved.
+   At startup it uses the same cockpit check and **SYS 2 / ENG 4 / WEP 0** power setup as Travel Assist.
+   If the PIP distribution cannot be confirmed, it shows a message and continues.
 2. For another system, it first tries the configured Galaxy Map bookmark. If there is none or it does not produce
    the expected route, it searches by system name. A blank system name means the current system.
 3. After entering supercruise, it selects and confirms the next route system before each jump alignment.

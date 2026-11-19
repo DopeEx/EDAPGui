@@ -300,16 +300,22 @@ class AssistsMixin:
             sleep(1)
             return FsdAssistResult.InSystemTarget
 
+    def prepare_travel_power(self, assist_name: str) -> bool:
+        """Confirm cockpit focus and give the engines priority before starting an assist."""
+        if not self.ship_control.goto_cockpit_view(timeout=5.0):
+            return False
+        if not set_power_distribution(self.keys, self.status, "engine", skip_if_set=True):
+            self.notify_user(f"Power distribution could not be confirmed. {assist_name} will continue.")
+        return True
+
     def travel_assist(self, scr_reg):
         """Choose the required travel phase from the currently targeted system."""
         system_target = self.jump_target()
         if not system_target and not self.has_in_system_target(self.status.get_cleaned_data()):
             self.ap_ckb("log", "No local target found. Select a target and try again.")
             return
-        if not self.ship_control.goto_cockpit_view(timeout=5.0):
+        if not self.prepare_travel_power("Travel Assist"):
             return
-        if not set_power_distribution(self.keys, self.status, "engine", skip_if_set=True):
-            self.notify_user("Power distribution could not be confirmed. Travel Assist will continue.")
         if system_target:
             self.total_dist_jumped = 0
             result = self.fsd_assist(scr_reg)
