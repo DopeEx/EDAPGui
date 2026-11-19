@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from difflib import SequenceMatcher
 from time import monotonic, sleep
 
 import cv2
@@ -31,6 +32,7 @@ class EDNavigationPanel:
         self.status_parser = StatusParser()
 
         self.nav_pnl_coords = None  # [top left, top right, bottom left, bottom right]
+        self._last_destination_name_image: np.ndarray | None = None
 
         # The rect is [L, T, R, B], top left x, y, and bottom right x, y in fraction of screen resolution
         # Nav Panel region covers the entire navigation panel.
@@ -75,7 +77,9 @@ class EDNavigationPanel:
         width, height = size_scale_for_station(35, 35, self.screen.screen_width, self.screen.screen_height)
         items = self.ocr.solid_highlighted_items(image, width, height)
         if not items:
-            items = self.ocr.solid_highlighted_items(image, width, height, remove_thin_lines=True)
+            items = self.ocr.solid_highlighted_items(
+                image, width, height, remove_thin_lines=True, intermediate_gray_fallback=True
+            )
         if len(items) != 1:
             logger.debug("Navigation tab highlight count=%s; no unique selected tab.", len(items))
             self._save_recognition_failure("tab", image)
@@ -105,17 +109,27 @@ class EDNavigationPanel:
 
     def _selected_destination(self) -> str:
         image = self.ocr.capture_region_pct({"rect": [0.11, 0.35, 0.70, 0.86]})
-        if logger.isEnabledFor(logging.DEBUG):
+        debug = logger.isEnabledFor(logging.DEBUG)
+        if debug:
             self._last_destination_image = image.copy()
+            self._last_destination_name_image = None
         width, height = size_scale_for_station(350, 25, self.screen.screen_width, self.screen.screen_height)
         items = self.ocr.solid_highlighted_items(image, width, height)
         if not items:
-            items = self.ocr.solid_highlighted_items(image, width, height, remove_thin_lines=True)
+            items = self.ocr.solid_highlighted_items(
+                image, width, height, remove_thin_lines=True, intermediate_value_fallback=True
+            )
         if len(items) != 1:
             logger.debug("Navigation destination highlight count=%s; row not confirmed.", len(items))
             self._save_recognition_failure("destination", image)
             return ""
-        name_image = self._destination_name_image(items[0][0])
+        row = items[0][0]
+        name_image = self._destination_name_image(row)
+        if row.shape[0] < 32:
+            # Small glyphs can blur together in OCR; preserve the text rather than correcting O/0 afterward.
+            name_image = cv2.resize(name_image, None, fx=1.75, fy=1.75, interpolation=cv2.INTER_CUBIC)
+        if debug:
+            self._last_destination_name_image = name_image.copy()
         text = normalize_text(" ".join(self.ocr.image_simple_ocr(name_image) or []))
         logger.debug("Navigation destination-name OCR: name=%r", text)
         if not text:
@@ -135,12 +149,56 @@ class EDNavigationPanel:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         background_gray = int(cv2.cvtColor(background.reshape(1, 1, 3), cv2.COLOR_BGR2GRAY)[0, 0])
         ink = cv2.inRange(gray, 0, max(0, background_gray - 35))
+        # A rectified row border can join a leading icon to unrelated pixels.
+        ink[[0, -1], :] = 0
+        ink[:, [0, -1]] = 0
         count, labels, stats, _ = cv2.connectedComponentsWithStats(ink)
+        components = [stat for stat in stats[1:] if height * 0.25 <= stat[cv2.CC_STAT_HEIGHT] <= height * 0.65]
+        name_start = int(width * 0.04)
+        icon_limit = width * 0.08
+        spans = sorted((x, x + w) for x, _y, w, _h, _area in components if x + w > name_start)
+        text_left = spans[0][0] if spans else 0
         for label in range(1, count):
             # Map pins and shields extend beyond the text line; do not OCR them as letters.
-            if stats[label, cv2.CC_STAT_HEIGHT] > height * 0.65:
+            x, _, w, h, _ = stats[label]
+            if h > height * 0.65:
                 image[labels == label] = background
-        return image[int(height * 0.15) : int(height * 0.85), int(width * 0.04) :]
+                if name_start < x + w <= icon_limit and text_left - (x + w) > height * 0.25:
+                    # Clear the soft-colored edges of a separated leading icon as well as its dark core.
+                    image[:, : x + w + round(height * 0.2)] = background
+        compact_icon_removed = False
+        if spans:
+            text_height = float(np.median([stat[cv2.CC_STAT_HEIGHT] for stat in components]))
+            right = 0
+            for left, end in spans:
+                # Compact icons can be text-height, but are separated from the name by a wider gap.
+                if right and left - right > text_height * 1.1 and right <= icon_limit and left <= width * 0.15:
+                    image[:, :left] = background
+                    compact_icon_removed = True
+                    break
+                right = max(right, end)
+        # In shallow highlights the name can extend almost to the rectified row border.
+        if height < 32:
+            inset = max(1, round(height * 0.07))
+            cropped = image[inset : height - inset, name_start:]
+            # At this size, color on the selection chevrons can make OCR read them as letters.
+            cropped = cv2.cvtColor(cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+            background[:] = background_gray
+        else:
+            cropped = image[int(height * 0.15) : int(height * 0.85), name_start:]
+        if compact_icon_removed or cropped.shape[0] < 32:
+            # Small rows and icon-cleaned crops benefit from additional OCR context.
+            padding = max(1, cropped.shape[0] // 2)
+            return cv2.copyMakeBorder(
+                cropped,
+                padding,
+                padding,
+                padding,
+                padding,
+                cv2.BORDER_CONSTANT,
+                value=tuple(int(v) for v in background),
+            )
+        return cropped
 
     def _next_destination(self, previous: str, deadline: float) -> str | None:
         self.keys.send("UI_Down")
@@ -156,8 +214,11 @@ class EDNavigationPanel:
         return None if stable_reads >= 3 and change_deadline < deadline else ""
 
     def _lock_visible_destination(self, name: str, expected: str, deadline: float, attempt: int) -> bool:
-        if logger.isEnabledFor(logging.DEBUG):
+        debug = logger.isEnabledFor(logging.DEBUG)
+        near_match_saved = False
+        if debug:
             self._last_destination_image = None
+            self._last_destination_name_image = None
         if not self._navigation_tab():
             return False
         self.keys.send("UI_Up", hold=4)
@@ -192,6 +253,19 @@ class EDNavigationPanel:
                 logger.warning("Station OCR selection did not confirm the requested target: %r", name)
                 self._save_last_destination_failure("unconfirmed")
                 return False
+            if (
+                debug
+                and not near_match_saved
+                and self._last_destination_image is not None
+                and self._last_destination_name_image is not None
+                and SequenceMatcher(None, expected, parsed_name, autojunk=False).ratio() >= 0.8
+            ):
+                save_case(
+                    "navigation-panel",
+                    "destination-near-match",
+                    {"evaluated": self._last_destination_image, "name-crop": self._last_destination_name_image},
+                )
+                near_match_saved = True
             current = self._next_destination(current, deadline)
         logger.warning(
             "Station OCR did not find the requested destination: target=%r scan_complete=%s", name, current is None

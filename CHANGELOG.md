@@ -20,9 +20,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Use ship-specific normal-space turn rates outside supercruise to prevent overlong steering inputs during alignment, including after dropping out for a station approach.
 - Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
 - Odyssey Galaxy Map system-name searches fall back to OCR-checked mouse selection and the right-hand plot button if keyboard plotting does not produce the requested route, with bounded retries and route confirmation before continuing.
-- Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner, allowing the selected station name to reach OCR.
+- Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner or shortens a selected tab, allowing the selected text to reach OCR.
 - Compass fallback distinguishes slightly colored filled markers from bright ship-hull reflections and rejects texture gaps mistaken for hollow markers. Unconfirmed compass alignment continues only with a detected visible target ring; otherwise the assist sets zero throttle and stops.
-- Navigation station-name OCR removes complete tall symbols before cropping the name column, preventing clipped icon fragments from becoming false name prefixes.
+- Dim cockpit panel selections remain recognizable against saturated scenery, preventing premature station-search or docking failures.
+- Navigation station-name OCR removes tall symbols and separated compact leading icons, preventing false extra characters and preserving spaced numeric suffixes.
 - Supercruise station approaches hold 50% throttle until the target ring is acquired and centered before cruising at 75%. If the ring is lost while clearly off course, the assist stops waiting for the exit prompt and realigns instead.
 - Dim blue supercruise disengage lettering now passes the message pre-check instead of leaving only its brighter frame detectable and preventing OCR from starting.
 

@@ -15,6 +15,7 @@ none. The file names tell what is expected:
  - nav-panel: the selected system/navigation/transactions/contacts tab is identified in both color schemes
  - internal-panel: the selected right-panel tab, including icon tabs, is identified in both color schemes
 Screenshots whose names contain "crop" or "head-turned" are ignored.
+Diagnostic crops are replayed separately from full-screen fixtures; later navigation panel views are context only.
 """
 
 import unittest
@@ -64,6 +65,38 @@ def screenshot_ocr(path, engines):
         locale = LocalizationManager(str(paths.LOCALES_DIR), language)
         engines[language] = OCR(screen=None, language=locale.ocr_language)
     return engines[language]
+
+
+@skipUnless(OCR is not None, "PaddleOCR unavailable")
+class NavigationFailureScreenshotTestCase(unittest.TestCase):
+    def test_selected_destination_in_local_failure_crops(self):
+        cases = (
+            ("01_navigation_ohm-city-reread_de.png", 1920, 1080, "OHM CITY"),
+            ("03_navigation_tauri-b7-highlight_en.png", 3840, 2160, "60 TAURI B 7"),
+            ("04_navigation_tauri-b7-highlight_en.png", 3840, 2160, "60 TAURI B 7"),
+            ("07_navigation_arcadian-selected_de.png", 1920, 1080, "ARCADIAN"),
+            ("09_navigation_wolf-works-selected_de.png", 1920, 1080, "WOLF WORKS"),
+            ("19_navigation_ziegler-selected_asp_de.png", 1920, 1080, "ZIEGLER CHEMICAL"),
+        )
+        if not any((NAVIGATION_FAILURES / name).is_file() for name, *_ in cases):
+            self.skipTest("local navigation failure crops unavailable")
+
+        engines = {}
+        for name, width, height, expected in cases:
+            with self.subTest(screenshot=name):
+                path = NAVIGATION_FAILURES / name
+                if not path.is_file():
+                    self.skipTest("local navigation failure crop unavailable")
+                ocr = screenshot_ocr(path, engines)
+                panel = EDNavigationPanel.__new__(EDNavigationPanel)
+                panel.screen = Mock(screen_width=width, screen_height=height)
+                panel.ocr = ocr
+                with (
+                    patch.object(ocr, "capture_region_pct", return_value=load_screenshot(path)),
+                    patch.object(panel, "_save_recognition_failure") as failure,
+                ):
+                    self.assertEqual(panel._selected_destination(), expected)
+                failure.assert_not_called()
 
 
 @skipUnless(OCR is not None and NAV_PANEL_SCREENSHOTS, "PaddleOCR or local navigation-panel screenshots unavailable")

@@ -161,13 +161,22 @@ include `user_data/stats/` in an external backup for that protection.
 
 Cockpit tab and navigation-row recognition first checks the existing bright filled highlights, including
 thin-line removal. If neither check finds a highlight, a bounded adaptive brightness threshold separates
-dim selected backgrounds from dark inactive tabs. The fallback uses HSV value (the brightest color channel),
+dim selected backgrounds from dark inactive tabs. The first fallback uses HSV value (the brightest color channel),
 so shaded default-orange highlights are not rejected merely because their grayscale luminance is low.
-Its threshold stays between 140 and 210; it does not lower the normal bright-highlight threshold.
-The same brightness measure and threshold validate the rectified highlight's
+Only if it finds no highlight, a separate adaptive grayscale check can isolate a dim selection from saturated
+scenery that merges with it in the value mask. Existing results, including multiple ambiguous highlights, retain
+priority. Each adaptive threshold stays between 140 and 210; the normal bright-highlight threshold is unchanged.
+If a left- or right-panel tab still has no candidate, an intermediate grayscale threshold can recover a dim filled tab
+that blends into the surrounding HUD at the lower threshold. Navigation destination rows also have a narrowly scoped
+value threshold of 205 for bright orange fills that fall just below the adaptive value cutoff.
+The same brightness measure and threshold used for each mask also validate its rectified highlight's
 filled area; quadrilateral, size and fill checks still reject text-only areas and hollow outlines.
 Tab navigation still requires one uniquely recognized, OCR-confirmed tab before sending a switch or action.
 The left tab capture includes the System icon when the panel appears slightly farther left.
+Destination-name preprocessing separates leading icons from the rectified row border and removes their soft edges
+when there is a clear gap before the name. Shallow highlights use a smaller vertical inset so the name's lower
+strokes survive before the crop is padded for OCR. The shortest crops are converted to luminance so colored
+selection chevrons are less likely to be read as letters in the name.
 
 Occluded-target detection checks white and beige dashed rings with their existing color-specific match thresholds.
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight
@@ -290,6 +299,9 @@ and is excluded from Git along with the rest of `user_data/`.
   uses the same search region with or without Debug; the extra context is captured only when Debug is enabled.
 - Unconfirmed navigation and internal-panel highlights save the evaluated region and a later panel-context image,
   before the next navigation input. The later image is not necessarily identical to the evaluated frame.
+- For a close but non-exact destination OCR read, Debug saves the evaluated list region and the exact OCR name crop
+  before advancing, at most once per scan attempt. Similarity triggers diagnostics only; selection still requires
+  an exact match and the existing confirmation checks.
 - Odyssey Galaxy Map name searches save full game-window snapshots in `user_data/debug/galaxy-map/` only for
   failed checks, lost map focus or unconfirmed routes. Successful steps do not capture or save diagnostic images.
   The debug log records the stage, requested system, attempt, game GUI focus and window-activation setting.
@@ -318,12 +330,15 @@ details before sharing them. Debug images are not captured or saved with Debug d
 compass and target captures can add overhead while debugging.
 
 Navigation destination selection accepts long, narrow filled row highlights without collapsing their corners during
-contour simplification. If the usual approximation cannot supply four distinct corners, a single finer approximation
-is tried before rejecting the contour. This preserves perspective-slanted selections without changing already valid
-highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
+contour simplification. If the usual approximation fails the corner, rectified-size or fill checks, a single finer
+approximation is tried before rejecting the contour. This preserves perspective-slanted selections without changing
+already valid highlights. Thin lines and hollow outlines do not count as selected rows; the destination still requires an exact
 name match and confirmation from game state.
 Tall leading and trailing symbols are removed before the name-column crop, so a partially clipped station icon
-does not become a spurious OCR prefix. The crop boundaries and exact station-name comparison are unchanged.
+does not become a spurious OCR prefix. Compact leading icons are also removed when a gap wider than the text
+height separates them from the name within the narrow leading-symbol area. Only these newly cleaned crops
+receive an additional background margin, which helps OCR preserve spaced numeric suffixes; established crops
+retain their previous framing. No recognized letters or digits are silently discarded or substituted.
 
 ### Other assists
 

@@ -137,7 +137,16 @@ class OCR:
         # No good matches, then return None
         return None, 0, 0
 
-    def solid_highlighted_items(self, image, min_w, min_h, *, remove_thin_lines=False):
+    def solid_highlighted_items(
+        self,
+        image,
+        min_w,
+        min_h,
+        *,
+        remove_thin_lines=False,
+        intermediate_gray_fallback=False,
+        intermediate_value_fallback=False,
+    ):
         """Extract filled highlights with bounded brightness adaptation and perspective correction."""
         image = image[:, :, :3]
         items = self._highlighted_quadrilaterals(image, min_w, min_h, 210, remove_thin_lines)
@@ -145,11 +154,24 @@ class OCR:
             items = self._highlighted_quadrilaterals(image, min_w, min_h, 210, True)
         if items:
             return items
-        value = image.max(axis=2)
-        separation, _ = cv2.threshold(value, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        # Saturated highlights can be bright in HSV value while their grayscale luminance is dim.
-        threshold = max(140, min(210, int(separation) + 1))
-        return self._highlighted_quadrilaterals(image, min_w, min_h, threshold, remove_thin_lines, use_value=True)
+        # Value preserves saturated HUD highlights; grayscale separates dim highlights from saturated scenery.
+        for brightness, use_value in ((image.max(axis=2), True), (cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), False)):
+            separation, _ = cv2.threshold(brightness, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            threshold = max(140, min(210, int(separation) + 1))
+            items = self._highlighted_quadrilaterals(
+                image, min_w, min_h, threshold, remove_thin_lines, use_value=use_value
+            )
+            if items:
+                return items
+        if intermediate_gray_fallback and threshold < 195:
+            # A dim filled tab can disappear at 210 but merge with its surroundings at the Otsu floor.
+            items = self._highlighted_quadrilaterals(image, min_w, min_h, 195, remove_thin_lines)
+            if items:
+                return items
+        if intermediate_value_fallback:
+            # Bright orange selection fills can sit just below the adaptive value cutoff.
+            return self._highlighted_quadrilaterals(image, min_w, min_h, 205, remove_thin_lines, use_value=True)
+        return []
 
     @staticmethod
     def _highlighted_quadrilaterals(image, min_w, min_h, threshold, remove_thin_lines, *, use_value=False):
@@ -169,14 +191,22 @@ class OCR:
             fill_fraction = cv2.contourArea(contour) / (long_side * short_side)
             if fill_fraction < 0.65:
                 continue
-            # Retry a finer approximation only if the usual one cannot provide four distinct corners.
+            # Retry finer geometry only if the usual approximation fails validation.
+            candidates = []
             for epsilon in (0.015, 0.01):
                 polygon = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
                 # Perimeter-based simplification can collapse nearly rectangular, narrow rows into a line.
                 if len(polygon) != 4 and long_side / short_side >= 10 and fill_fraction >= 0.85:
                     polygon = cv2.boxPoints(rectangle).reshape(4, 1, 2)
-                if len(polygon) != 4 or not cv2.isContourConvex(polygon):
-                    continue
+                if len(polygon) == 4 and cv2.isContourConvex(polygon):
+                    candidates.append(polygon)
+            box = cv2.boxPoints(rectangle).reshape(4, 1, 2)
+            undersized = False
+            for polygon in (*candidates, box):
+                if polygon is box and not (undersized and fill_fraction >= 0.85):
+                    # The minimum-area box only restores solidly filled highlights whose
+                    # simplified corners eroded below the size gate.
+                    break
                 points = polygon.reshape(4, 2).astype(np.float32)
                 sums = points.sum(axis=1)
                 differences = np.diff(points, axis=1).ravel()
@@ -188,24 +218,24 @@ class OCR:
                         points[differences.argmax()],
                     ]
                 )
-                if len(np.unique(corners, axis=0)) == 4:
-                    break
-            else:
-                continue
-            width = int(max(np.linalg.norm(corners[1] - corners[0]), np.linalg.norm(corners[2] - corners[3])))
-            height = int(max(np.linalg.norm(corners[3] - corners[0]), np.linalg.norm(corners[2] - corners[1])))
-            if width < min_w * 0.9 or height < min_h * 0.9:
-                continue
-            destination = np.array([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]], np.float32)
-            transform = cv2.getPerspectiveTransform(corners, destination)
-            cropped = cv2.warpPerspective(image, transform, (width, height))
-            cropped_brightness = cropped.max(axis=2) if use_value else cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-            filled = cv2.inRange(cropped_brightness, threshold, 255)
-            # Dense dark tab lettering can occupy almost half of a filled highlight.
-            if cv2.countNonZero(filled) < width * height * 0.5:
-                continue
-            x, y, w, h = cv2.boundingRect(contour)
-            items.append((cropped, x, y, w, h))
+                if len(np.unique(corners, axis=0)) != 4:
+                    continue
+                width = int(max(np.linalg.norm(corners[1] - corners[0]), np.linalg.norm(corners[2] - corners[3])))
+                height = int(max(np.linalg.norm(corners[3] - corners[0]), np.linalg.norm(corners[2] - corners[1])))
+                if width < min_w * 0.9 or height < min_h * 0.9:
+                    undersized = True
+                    continue
+                destination = np.array([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]], np.float32)
+                transform = cv2.getPerspectiveTransform(corners, destination)
+                cropped = cv2.warpPerspective(image, transform, (width, height))
+                cropped_brightness = cropped.max(axis=2) if use_value else cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+                filled = cv2.inRange(cropped_brightness, threshold, 255)
+                # Dense dark tab lettering can occupy almost half of a filled highlight.
+                if cv2.countNonZero(filled) < width * height * 0.5:
+                    continue
+                x, y, w, h = cv2.boundingRect(contour)
+                items.append((cropped, x, y, w, h))
+                break
         return sorted(items, key=lambda item: (item[2], item[1]))
 
     def capture_region_pct(self, region):
