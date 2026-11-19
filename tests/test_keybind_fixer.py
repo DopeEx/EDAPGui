@@ -80,6 +80,12 @@ class LayoutTestCase(unittest.TestCase):
 
 
 class PlanTestCase(unittest.TestCase):
+    def test_quarter_throttle_is_repaired(self):
+        plan = plan_for(make_file({"SetSpeed25": (FREE_PRIMARY, FREE)}))
+        change = changes_by_action(plan)["SetSpeed25"]
+        self.assertEqual(change.kind, GAP)
+        self.assertTrue(change.combo[0])
+
     def test_gap_is_filled_with_the_default_of_the_game(self):
         plan = plan_for(make_file({"SetSpeedZero": (FREE_PRIMARY, FREE), "PitchUpButton": (key("Key_Q"), FREE)}))
 

@@ -26,6 +26,7 @@ from core.constants import (
 )
 from core.logger import logger
 from core.types import EdapInterruptError, ScTargetAlignReturn
+from routines.sc_recovery import ScLoopRecovery
 
 # FSD alignment correction while charging (compass degrees / seconds)
 FSD_ALIGN_TOLERANCE = 1.5
@@ -60,6 +61,9 @@ SUPERCRUISE_ENTRY_TIMEOUT = 60.0
 
 
 class FlightMixin:
+    _sc_loop_recovery: ScLoopRecovery | None = None
+    _sc_loop_target: tuple | None = None
+
     # Compass readings of the last FSD alignment measurement that reported the target behind the ship
     fsd_behind_readings = 0
 
@@ -323,12 +327,20 @@ class FlightMixin:
 
         self.ap_ckb("log+vce", "Compass Align")
 
+        def read_offset(*, corrected=False):
+            off = self.read_nav_offset(scr_reg)
+            if abort_on_disengage:
+                self._check_sc_loop_recovery(off, corrected=corrected)
+            return off
+
         # try multiple times to get aligned.  If the sun is shining on console, this it will be hard to match
         # the vehicle should be positioned with the sun below us via the sun_avoid() routine after a jump
         for ii in range(self.config["NavAlignTries"]):
             if abort_on_disengage and self.try_sc_disengage(scr_reg):
                 return True
-            off = self.read_nav_offset(scr_reg)
+            if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
+                return False
+            off = read_offset()
             if off is None:
                 # Never steer without a reading: a guessed position turns the ship away from the target
                 logger.debug("Compass Align: compass or nav point not visible, compass steering stopped.")
@@ -346,6 +358,8 @@ class FlightMixin:
                 # Roll if the nav point is not directly behind us.
                 if (-180 + close) < off["yaw"] < (180 - close) and (-180 + close) < off["pit"] < (180 - close):
                     for i in range(20):
+                        if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
+                            return False
                         # Calc roll time based on nav point location
                         if abs(off["roll"]) > close and (180 - abs(off["roll"]) > close):
                             # first roll to get the nav point at the vertical position
@@ -364,7 +378,7 @@ class FlightMixin:
                             sleep(1)
                             if abort_on_disengage and self.try_sc_disengage(scr_reg):
                                 return True
-                            off = self.read_nav_offset(scr_reg)
+                            off = read_offset(corrected=True)
                             logger.debug(f"Compass align roll step {i + 1}: {off}")
                             if off is None:
                                 break
@@ -374,6 +388,8 @@ class FlightMixin:
                     break
 
                 for i in range(20):
+                    if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
+                        return False
                     # Calc pitch time based on nav point location
                     if abs(off["pit"]) > close:
                         if off["pit"] < 0:
@@ -383,7 +399,7 @@ class FlightMixin:
                         sleep(0.5)
                         if abort_on_disengage and self.try_sc_disengage(scr_reg):
                             return True
-                        off = self.read_nav_offset(scr_reg)
+                        off = read_offset(corrected=True)
                         if off is None or (reroll < NAV_ALIGN_MAX_REROLLS and self.nav_needs_reroll(off, close)):
                             break
                     else:
@@ -394,6 +410,8 @@ class FlightMixin:
                 logger.debug(f"Compass align: nav point far off to the side, rolling again: {off}")
 
             for i in range(20):
+                if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
+                    return False
                 # Calc yaw time based on nav point location
                 if off is None:
                     break
@@ -405,7 +423,7 @@ class FlightMixin:
                     sleep(0.5)
                     if abort_on_disengage and self.try_sc_disengage(scr_reg):
                         return True
-                    off = self.read_nav_offset(scr_reg)
+                    off = read_offset(corrected=True)
                 else:
                     break
 
@@ -552,6 +570,46 @@ class FlightMixin:
             f"(sun avoid + compass align {coarse_time:.1f}s), retry={retry}."
         )
 
+    def _check_sc_loop_recovery(self, off, *, corrected=False):
+        recovery = self._sc_loop_recovery
+        if recovery is None or self.jn.ship_state()["status"] != "in_supercruise":
+            return
+        if self._sc_loop_target is not None:
+            target = self.status.get_cleaned_data()
+            if (
+                tuple(target[key] for key in ("Destination_System", "Destination_Body", "Destination_Name"))
+                != self._sc_loop_target
+            ):
+                logger.debug("SC loop recovery discarded because the target changed.")
+                self._sc_loop_recovery = None
+                self._sc_loop_target = None
+                return
+        action = recovery.observe(off, time.monotonic(), corrected=corrected)
+        if corrected:
+            logger.debug(
+                "SC loop recovery sample: stage=%s offset=%s samples=%s corrections=%s",
+                recovery.stage,
+                off,
+                recovery.samples,
+                recovery.corrections,
+            )
+        if action is None:
+            return
+        logger.debug("SC loop recovery: action=%s stage=%s offset=%s", action, recovery.stage, off)
+        if action == "stop":
+            self.keys.send("SetSpeedZero")
+            self.stop_sco_monitoring()
+            message = "Supercruise alignment made no progress after recovery. Assist stopped; take control of the ship."
+            logger.warning(message)
+            self.notify_user(message)
+            raise EdapInterruptError(message)
+        if action == "recovered":
+            self._sc_loop_recovery = None
+            if recovery.stage:
+                self.keys.send("SetSpeed50")
+        else:
+            self.keys.send(action)
+
     def sc_target_align(self, scr_reg) -> ScTargetAlignReturn:
         """Stays tight on the target, monitors for disengage and obscured.
         If target could not be found, return false.
@@ -586,7 +644,17 @@ class FlightMixin:
             self.ap_ckb("log", "Target lost, attempting re-alignment.")
             return ScTargetAlignReturn.Lost
 
+        if getattr(self, "_sc_loop_recovery", None) is not None:
+            if self.try_sc_disengage(scr_reg):
+                return ScTargetAlignReturn.Disengage
+            self._check_sc_loop_recovery(self.get_nav_offset(scr_reg))
+
         while (abs(off["x"]) > close) or (abs(off["y"]) > close):
+            if (
+                getattr(self, "_sc_loop_recovery", None) is not None
+                and self.jn.ship_state()["status"] != "in_supercruise"
+            ):
+                return ScTargetAlignReturn.Lost
             if abs(off["x"]) > 25:
                 hold_yaw = 0.2
             else:
@@ -616,6 +684,8 @@ class FlightMixin:
             # check for SC Disengage
             if self.try_sc_disengage(scr_reg):
                 return ScTargetAlignReturn.Disengage
+            if getattr(self, "_sc_loop_recovery", None) is not None:
+                self._check_sc_loop_recovery(self.get_nav_offset(scr_reg), corrected=True)
 
             new = self.get_destination_offset(scr_reg)
             if new:
@@ -677,6 +747,7 @@ class FlightMixin:
         this is important because when we do nav_align() if it does not see the Nav Point
         in the compass (because it is a hollow circle), then it will pitch down, this will
         bring the target into view quickly."""
+        self._sc_loop_recovery = None
         self.ap_ckb("log+vce", "Target occluded, repositioning.")
         self.keys.send("SetSpeed50")
         sleep(5)

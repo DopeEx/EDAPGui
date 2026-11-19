@@ -25,6 +25,21 @@ This document summarizes the behavior currently implemented and lists a small nu
    `in_supercruise` state before realigning; the jump-transition flag alone is not sufficient.
    If arrival is not confirmed within 60 seconds of requesting supercruise after cooldown, the assist stops with an
    error. This recovery also applies to Waypoint Assist.
+
+   After a previously centered target ring is lost, a conservative loop-recovery monitor follows the existing
+   50% realignment. It requires at least three consistent follow-up compass readings and three turn corrections;
+   initial alignment and a single ring loss alone do not trigger throttle reduction. Missing readings, gaps over
+   15 seconds, hemisphere changes, or angular-error jumps over 30 degrees restart the evidence window.
+   A cumulative improvement of at least 10 degrees renews the progress window.
+   After 15 seconds without such progress it selects 25% throttle, then 0% after another 10 seconds without progress.
+   Zero throttle in supercruise still means forward movement. After 30 seconds without progress at 0%, it stops the
+   assist with a user message. From 60 seconds after the first reduction, a confirmed stall of at least 15 seconds
+   at 0% can also stop recovery; elapsed time alone or missing/inconsistent readings never trigger this new stop.
+   Disengage detection stays active and takes priority over recovery actions. After throttle reduction, ten seconds
+   of consistent, ahead-and-centered compass readings restore only 50%, not 75%.
+   Recovery is discarded on target changes, interdiction recovery, occlusion repositioning, or assist exit.
+   This behavior is shared by Travel and Waypoint Assist. Its physical effectiveness still needs observation during
+   naturally occurring overshoots; automated tests validate decisions, not the ship's braking or turning response.
 6. On disengagement, it checks whether docking is possible and whether the destination supports docking. When
    applicable, it sets zero throttle, waits briefly for deceleration and normal-space confirmation, and checks
    that the compass target is ahead and centered. It turns only when needed and confirms the result before
@@ -451,11 +466,9 @@ These are deferred improvements for future consideration.
 - Evaluate using the game's built-in Supercruise Assist for eligible in-system destinations when the ship has the
   module fitted. Verify how EDFC can confirm activation and arrival, and define when to use EDFC's own approach
   instead if the module is unavailable or cannot be engaged.
-- Defer automatic recovery from the supercruise "loop of shame" until a naturally occurring case is captured in
-  the debug log. After an overshoot, look for a target that stays off-center across several turn corrections
-  despite reliable compass readings, rather than assuming a slow turn or a momentary ring loss is a loop.
-  Evaluate whether temporarily reducing throttle to 25% breaks the loop without disrupting normal recovery or
-  missing the disengage prompt.
+- Observe conservative supercruise loop recovery during naturally occurring overshoots, especially with the
+  Panther Clipper Mk II. Review Debug-level recovery samples/actions for unnecessary reductions or stops, successful
+  realignment, and uninterrupted disengage detection before adjusting its thresholds.
 - Refine station-name screen reading for additional destination icons and HUD layouts as examples become available.
   Bookmarks remain an alternative when a destination cannot be read reliably.
 - Avoid changing hyperspace-interdiction recovery until there is a reliable way to validate it. Interdiction attempts

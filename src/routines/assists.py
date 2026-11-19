@@ -7,6 +7,7 @@ from controls.power import set_power_distribution
 from core.constants import Flags2GlideMode, FlagsAnalysisMode, FlagsDocked, FlagsLanded, FlagsSupercruise
 from core.logger import logger
 from core.types import FsdAssistResult, ScTargetAlignReturn
+from routines.sc_recovery import ScLoopRecovery
 from vision.disengage import DisengageWorker
 from vision.screen import set_focus_elite_window
 
@@ -357,6 +358,8 @@ class AssistsMixin:
     # Supercruise Assist loop to travel to target in system and perform autodock
     #
     def sc_assist(self, scr_reg):
+        self._sc_loop_recovery = None
+        self._sc_loop_target = None
         worker = getattr(self, "_disengage_worker", None)
         if worker is None:
             worker = self._disengage_worker = DisengageWorker()
@@ -367,6 +370,8 @@ class AssistsMixin:
         try:
             return self._sc_assist(scr_reg)
         finally:
+            self._sc_loop_recovery = None
+            self._sc_loop_target = None
             self._disengage_session = False
             worker.invalidate()
 
@@ -420,7 +425,13 @@ class AssistsMixin:
                         # The ring can disappear just before the exit prompt, even on a good course.
                         if self.wait_for_sc_disengage(scr_reg, 10):
                             break
-                        self.keys.send("SetSpeed50")
+                        if self._sc_loop_recovery is None:
+                            self.keys.send("SetSpeed50")
+                            self._sc_loop_recovery = ScLoopRecovery()
+                            target = self.status.get_cleaned_data()
+                            self._sc_loop_target = tuple(
+                                target[key] for key in ("Destination_System", "Destination_Body", "Destination_Name")
+                            )
                     if self.nav_align(scr_reg, abort_on_disengage=True):  # Compass Align
                         break
 
@@ -446,6 +457,7 @@ class AssistsMixin:
             # check if we are being interdicted
             interdicted = self.interdiction_check()
             if interdicted:
+                self._sc_loop_recovery = None
                 # Continue journey after interdiction
                 self.keys.send("SetSpeed50")
                 self.nav_align(scr_reg)  # realign with station

@@ -11,6 +11,7 @@ DEFAULT_KEYS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "PitchDownButton": (("Key_S", ()),),
     "UpThrustButton": (("Key_R", ()),),
     "SetSpeedZero": (("Key_X", ()),),
+    "SetSpeed25": (),
     "SetSpeed50": (),
     "SetSpeed75": (),
     "SetSpeed100": (),
@@ -99,6 +100,7 @@ SHARED_IN_DEFAULTS: dict[str, frozenset[str]] = {
         ]
     ),
     "SetSpeedZero": frozenset(["CamZoomOut", "CommanderCreator_Redo", "HumanoidThrowGrenadeButton", "StoreCamZoomIn"]),
+    "SetSpeed25": frozenset([]),
     "SetSpeed50": frozenset([]),
     "SetSpeed75": frozenset([]),
     "SetSpeed100": frozenset([]),

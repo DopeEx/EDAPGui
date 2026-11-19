@@ -23,6 +23,7 @@ in **Options > Controls**. The action names in the first column are the names ED
 | `PitchDownButton` | Pitch Down | Ship Controls > Flight Rotation |
 | `UpThrustButton` | Thrust Up | Ship Controls > Flight Thrust |
 | `SetSpeedZero` | Set Speed to 0% | Ship Controls > Flight Throttle |
+| `SetSpeed25` | Set Speed to 25% | Ship Controls > Flight Throttle |
 | `SetSpeed50` | Set Speed to 50% | Ship Controls > Flight Throttle |
 | `SetSpeed75` | Set Speed to 75% | Ship Controls > Flight Throttle |
 | `SetSpeed100` | Set Speed to 100% | Ship Controls > Flight Throttle |
