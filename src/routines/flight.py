@@ -4,6 +4,7 @@ import random
 import threading
 import time
 from time import sleep
+from typing import Literal
 
 import cv2
 
@@ -21,6 +22,7 @@ from core.constants import (
     FlagsLowFuel,
     FlagsOverHeating,
     FlagsSupercruise,
+    ship_rpy_normal_50,
 )
 from core.logger import logger
 from core.types import EdapInterruptError, ScTargetAlignReturn
@@ -230,7 +232,7 @@ class FlightMixin:
         #  which is dull red, the star field is 'brighter' than the sun, so our sun avoidance could pitch up
         #  endlessly. So we will have a fail_safe_timeout to kick us out of pitch up if we've pitch past 110 degrees, but
         #  we'll add 3 more second for pad in case the user has a higher pitch rate than the vehicle can do
-        fail_safe_timeout = (120 / self.pitchrate) + 3
+        fail_safe_timeout = self._rotation_hold("Pitch", 120) + 3
         starttime = time.time()
 
         # if sun in front of us, then keep pitching up until it is below us
@@ -416,10 +418,6 @@ class FlightMixin:
         start_time = time.monotonic()
         steps = 0
 
-        # Base holds were tuned on a ship with yaw/pitch rates of FSD_REF_YAW_RATE/FSD_REF_PITCH_RATE deg/s;
-        # scale them so other ships turn by about the same angle per step.
-        hold_pitch = min(0.150 * FSD_REF_PITCH_RATE / self.pitchrate, 0.150 * FSD_HOLD_SCALE_MAX)
-        hold_yaw = min(0.300 * FSD_REF_YAW_RATE / self.yawrate, 0.300 * FSD_HOLD_SCALE_MAX)
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
 
@@ -446,6 +444,9 @@ class FlightMixin:
             logger.debug("  off is None, cannot continue alignment")
             return
 
+        # Scale the base holds so ships turn by about the same angle per step.
+        hold_pitch = min(self._rotation_hold("Pitch", 0.150 * FSD_REF_PITCH_RATE), 0.150 * FSD_HOLD_SCALE_MAX)
+        hold_yaw = min(self._rotation_hold("Yaw", 0.300 * FSD_REF_YAW_RATE), 0.300 * FSD_HOLD_SCALE_MAX)
         logger.debug(
             f"Fine align start: x={off['x']:.1f}, y={off['y']:.1f}, tolerance={close}px, proportional={proportional}."
         )
@@ -813,10 +814,10 @@ class FlightMixin:
         # Correct the larger axis first; the next cycle re-measures
         if abs(yaw_off) >= abs(pit_off):
             key = "YawRightButton" if yaw_off > 0 else "YawLeftButton"
-            hold = abs(yaw_off) * FSD_ALIGN_GAIN / self.yawrate
+            hold = self._rotation_hold("Yaw", abs(yaw_off) * FSD_ALIGN_GAIN)
         else:
             key = "PitchUpButton" if pit_off > 0 else "PitchDownButton"
-            hold = abs(pit_off) * FSD_ALIGN_GAIN / self.pitchrate
+            hold = self._rotation_hold("Pitch", abs(pit_off) * FSD_ALIGN_GAIN)
         hold = min(max(hold, FSD_ALIGN_MIN_HOLD), FSD_ALIGN_MAX_HOLD)
 
         logger.debug(
@@ -928,30 +929,42 @@ class FlightMixin:
         logger.error(f"FSD Jump failed {jump_tries} times. jump=err2")
         raise Exception("FSD Jump failure")
 
-    #
+    def _rotation_hold(self, axis: Literal["Roll", "Pitch", "Yaw"], degrees: float) -> float:
+        # The status flag still distinguishes the flight modes while the journal reports FSD charging.
+        if self.status.get_flag(FlagsSupercruise):
+            mode = "supercruise"
+            rate = {"Roll": self.rollrate, "Pitch": self.pitchrate, "Yaw": self.yawrate}[axis]
+        else:
+            mode = "normal space"
+            ship_type = self.jn.ship_state().get("type")
+            profile = ship_rpy_normal_50.get(ship_type)
+            if profile is None:
+                message = f"Rotation stopped: no normal-space turn rates for {ship_type or 'the active ship'}."
+                logger.warning(message)
+                self.notify_user(message)
+                raise EdapInterruptError(message)
+            rate = profile[f"{axis}Rate"]
+        hold = degrees / rate
+        logger.debug("Rotation timing: %s, %s %.2f deg at %.2f deg/s = %.3f s.", mode, axis, degrees, rate, hold)
+        return hold
+
     def rotate_left(self, deg):
-        htime = deg / self.rollrate
-        self.keys.send("RollLeftButton", hold=htime)
+        self.keys.send("RollLeftButton", hold=self._rotation_hold("Roll", deg))
 
     def rotate_right(self, deg):
-        htime = deg / self.rollrate
-        self.keys.send("RollRightButton", hold=htime)
+        self.keys.send("RollRightButton", hold=self._rotation_hold("Roll", deg))
 
     def pitch_down(self, deg):
-        htime = deg / self.pitchrate
-        self.keys.send("PitchDownButton", htime)
+        self.keys.send("PitchDownButton", self._rotation_hold("Pitch", deg))
 
     def pitch_up(self, deg):
-        htime = deg / self.pitchrate
-        self.keys.send("PitchUpButton", htime)
+        self.keys.send("PitchUpButton", self._rotation_hold("Pitch", deg))
 
     def yaw_left(self, deg):
-        htime = deg / self.yawrate
-        self.keys.send("YawLeftButton", hold=htime)
+        self.keys.send("YawLeftButton", hold=self._rotation_hold("Yaw", deg))
 
     def yaw_right(self, deg):
-        htime = deg / self.yawrate
-        self.keys.send("YawRightButton", hold=htime)
+        self.keys.send("YawRightButton", hold=self._rotation_hold("Yaw", deg))
 
     def refuel(self, scr_reg):
         """Check if refueling needed, ensure correct start type."""

@@ -17,6 +17,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Use ship-specific normal-space turn rates outside supercruise to prevent overlong steering inputs during alignment, including after dropping out for a station approach.
 - Warn when keyboard menu directions share a key combination with Galaxy Map translation, which can move the map instead of navigating its menu. The keybinding fixer also proposes resolving these conflicts.
 - Odyssey Galaxy Map system-name searches fall back to OCR-checked mouse selection and the right-hand plot button if keyboard plotting does not produce the requested route, with bounded retries and route confirmation before continuing.
 - Perspective-slanted Navigation panel selections are no longer rejected when contour simplification displaces a corner, allowing the selected station name to reach OCR.

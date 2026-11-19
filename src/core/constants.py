@@ -208,6 +208,62 @@ ship_size_map = {
     "vulture": "S",
 }
 
+# Ship default RPY rates in deg/sec at 50% normal-space throttle.
+# Source: "Elite: Dangerous ship agility", nPitch50 / nRoll50 / nYaw50:
+# https://docs.google.com/spreadsheets/d/1mGyE-MgS9IIDyJvaeVBBXLYMt8teI7WMwhlOIJsm948/edit?gid=1124267452#gid=1124267452
+# Use the standard thruster builds where the source lists std and enhanced variants.
+ship_rpy_normal_50 = {
+    "adder": {"PitchRate": 39.6, "RollRate": 101.9, "YawRate": 14.3},
+    "anaconda": {"PitchRate": 25.6, "RollRate": 60.2, "YawRate": 10.5},
+    "anacondamkii": {"PitchRate": 27.7, "RollRate": 65.7, "YawRate": 14.4},  # anaconda2
+    "asp": {"PitchRate": 39.6, "RollRate": 102.1, "YawRate": 10.9},
+    "asp_scout": {"PitchRate": 41.9, "RollRate": 111.6, "YawRate": 15.3},
+    "belugaliner": {"PitchRate": 25.6, "RollRate": 60.1, "YawRate": 17.3},
+    "cobramkiii": {"PitchRate": 40.9, "RollRate": 101.7, "YawRate": 10.5},
+    "cobramkiv": {"PitchRate": 40.9, "RollRate": 101.7, "YawRate": 10.5},  # Cobra Mk III proxy
+    "cobramkv": {"PitchRate": 45.9, "RollRate": 121.6, "YawRate": 34.4},
+    "corsair": {"PitchRate": 26.3, "RollRate": 82.4, "YawRate": 11.0},
+    "cutter": {"PitchRate": 18.9, "RollRate": 45.6, "YawRate": 8.3},
+    "diamondback": {"PitchRate": 44.0, "RollRate": 101.9, "YawRate": 15.3},
+    "diamondbackxl": {"PitchRate": 37.3, "RollRate": 92.0, "YawRate": 14.3},
+    "dolphin": {"PitchRate": 31.2, "RollRate": 100.6, "YawRate": 20.7},
+    "eagle": {"PitchRate": 50.8, "RollRate": 121.6, "YawRate": 19.4},
+    "empire_courier": {"PitchRate": 39.7, "RollRate": 92.1, "YawRate": 16.5},
+    "empire_eagle": {"PitchRate": 40.7, "RollRate": 100.4, "YawRate": 15.7},
+    "empire_trader": {"PitchRate": 41.6, "RollRate": 82.3, "YawRate": 18.7},
+    "explorer_nx": {"PitchRate": 41.0, "RollRate": 100.8, "YawRate": 18.9},
+    "federation_corvette": {"PitchRate": 29.0, "RollRate": 75.4, "YawRate": 8.2},
+    "federation_dropship": {"PitchRate": 31.1, "RollRate": 80.5, "YawRate": 14.5},
+    "federation_dropship_mkii": {"PitchRate": 39.3, "RollRate": 90.6, "YawRate": 19.5},
+    "federation_gunship": {"PitchRate": 25.6, "RollRate": 80.6, "YawRate": 18.4},
+    "ferdelance": {"PitchRate": 39.4, "RollRate": 92.3, "YawRate": 13.1},
+    "hauler": {"PitchRate": 38.5, "RollRate": 100.6, "YawRate": 14.5},
+    "independant_trader": {"PitchRate": 28.8, "RollRate": 100.4, "YawRate": 15.7},
+    "krait_light": {"PitchRate": 32.7, "RollRate": 90.5, "YawRate": 10.9},
+    "krait_mkii": {"PitchRate": 32.8, "RollRate": 90.4, "YawRate": 11.0},
+    "lakonminer": {"PitchRate": 26.2, "RollRate": 38.3, "YawRate": 24.0},
+    "mamba": {"PitchRate": 31.5, "RollRate": 77.2, "YawRate": 10.9},
+    "mandalay": {"PitchRate": 35.8, "RollRate": 97.9, "YawRate": 28.6},
+    "mediumtransport01": {"PitchRate": 26.3, "RollRate": 60.8, "YawRate": 19.4},
+    "orca": {"PitchRate": 26.4, "RollRate": 55.2, "YawRate": 19.3},
+    "panthermkii": {"PitchRate": 18.7, "RollRate": 20.3, "YawRate": 10.5},
+    "python": {"PitchRate": 30.6, "RollRate": 91.7, "YawRate": 11.0},
+    "python_nx": {"PitchRate": 37.4, "RollRate": 92.0, "YawRate": 13.1},
+    "sidewinder": {"PitchRate": 43.4, "RollRate": 110.8, "YawRate": 16.9},
+    "smallcombat01_nx": {"PitchRate": 60.4, "RollRate": 140.5, "YawRate": 28.1},  # Measured at minimum mass
+    "type6": {"PitchRate": 31.2, "RollRate": 100.5, "YawRate": 18.1},
+    "type7": {"PitchRate": 23.9, "RollRate": 61.5, "YawRate": 22.3},
+    "type8": {"PitchRate": 29.9, "RollRate": 62.4, "YawRate": 18.8},
+    "type9": {"PitchRate": 21.1, "RollRate": 20.2, "YawRate": 8.3},
+    "type9_military": {"PitchRate": 23.4, "RollRate": 40.7, "YawRate": 8.2},
+    "typex": {"PitchRate": 39.5, "RollRate": 91.0, "YawRate": 16.6},
+    "typex_2": {"PitchRate": 33.2, "RollRate": 80.9, "YawRate": 16.7},
+    "typex_3": {"PitchRate": 36.5, "RollRate": 91.1, "YawRate": 16.6},
+    "viper": {"PitchRate": 37.4, "RollRate": 92.0, "YawRate": 15.4},
+    "viper_mkiv": {"PitchRate": 30.7, "RollRate": 92.3, "YawRate": 13.2},
+    "vulture": {"PitchRate": 43.6, "RollRate": 110.3, "YawRate": 17.8},
+}
+
 # Ship default RPY rates in deg/sec at 50% Supercruise throttle
 # Default data comes from 'marx': https://forums.frontier.co.uk/threads/supercruise-handling-of-ships.396845/
 # New ship entries use 360 / rotation time (seconds), rounded to the nearest 0.5 deg/s (ties up), from:

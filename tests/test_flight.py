@@ -23,6 +23,72 @@ class Keys:
         self.sent.append(key)
 
 
+class RotationProfileTestCase(unittest.TestCase):
+    def setUp(self):
+        self.flight = FlightMixin()
+        self.flight.keys = Mock()
+        self.flight.status = Mock()
+        self.flight.jn = Mock()
+        self.flight.jn.ship_state.return_value = {"type": "anaconda"}
+        self.flight.pitchrate = 14.0
+        self.flight.rollrate = 42.0  # Custom Supercruise setting
+        self.flight.yawrate = 6.0
+
+    def test_six_steering_inputs_switch_profiles_on_dropout_and_reentry(self):
+        for in_supercruise, pitch, roll, yaw in (
+            (True, 14.0, 42.0, 6.0),
+            (False, 25.6, 60.2, 10.5),
+            (True, 14.0, 42.0, 6.0),
+        ):
+            with self.subTest(in_supercruise=in_supercruise):
+                flight = self.flight
+                flight.status.get_flag.return_value = in_supercruise
+                flight.keys.send.reset_mock()
+
+                flight.pitch_up(90)
+                flight.pitch_down(90)
+                flight.rotate_left(90)
+                flight.rotate_right(90)
+                flight.yaw_left(90)
+                flight.yaw_right(90)
+
+                self.assertEqual(
+                    flight.keys.send.call_args_list,
+                    [
+                        call("PitchUpButton", 90 / pitch),
+                        call("PitchDownButton", 90 / pitch),
+                        call("RollLeftButton", hold=90 / roll),
+                        call("RollRightButton", hold=90 / roll),
+                        call("YawLeftButton", hold=90 / yaw),
+                        call("YawRightButton", hold=90 / yaw),
+                    ],
+                )
+                flight.status.get_flag.assert_called_with(FlagsSupercruise)
+
+    def test_normal_space_fsd_correction_uses_the_same_profile(self):
+        flight = self.flight
+        flight.status.get_flag.return_value = False
+        flight.measure_fsd_alignment = Mock(return_value=(0.2, 11.0))
+
+        self.assertTrue(flight.correct_fsd_alignment(None))
+
+        flight.keys.send.assert_called_once()
+        self.assertEqual(flight.keys.send.call_args.args, ("PitchUpButton",))
+        self.assertAlmostEqual(flight.keys.send.call_args.kwargs["hold"], 11.0 * 0.8 / 25.6)
+
+    def test_missing_normal_space_profile_stops_without_a_turn_input(self):
+        flight = self.flight
+        flight.status.get_flag.return_value = False
+        flight.jn.ship_state.return_value = {"type": "unsupported_ship"}
+        flight.notify_user = Mock()
+
+        with self.assertLogs("ed_log", level="WARNING"), self.assertRaisesRegex(EdapInterruptError, "unsupported_ship"):
+            flight.pitch_up(90)
+
+        flight.keys.send.assert_not_called()
+        flight.notify_user.assert_called_once()
+
+
 class SupercruiseEntryTestCase(unittest.TestCase):
     def flight(self):
         flight = FlightMixin()
@@ -342,12 +408,23 @@ class DiscoveryScanTestCase(unittest.TestCase):
 
 
 class JumpRetryTestCase(unittest.TestCase):
+    def target_alignment_flight(self):
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.return_value = True
+        flight.jn = Mock()
+        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        flight.vce = Mock()
+        flight.get_destination_offset = Mock()
+        flight.rollrate = 80.0
+        return flight
+
     def test_target_align_shortens_holds_near_the_target_when_proportional(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 40.0
         flight.yawrate = 24.0
         flight.get_destination_offset.side_effect = [{"x": -100, "y": 20}, {"x": 8, "y": 3}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=10, proportional=True)
@@ -359,11 +436,10 @@ class JumpRetryTestCase(unittest.TestCase):
         self.assertEqual(len(sent), 2)
 
     def test_target_align_keeps_fixed_holds_for_the_reference_ship(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 40.0
         flight.yawrate = 24.0
         flight.get_destination_offset.side_effect = [{"x": -100, "y": 80}, {"x": 8, "y": 3}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=50)
@@ -378,11 +454,10 @@ class JumpRetryTestCase(unittest.TestCase):
             (5.0, 3.0, 0.9, 0.45),  # very sluggish: capped at three times the base hold
         ):
             with self.subTest(pitchrate=pitchrate, yawrate=yawrate):
-                flight = Mock()
+                flight = self.target_alignment_flight()
                 flight.pitchrate = pitchrate
                 flight.yawrate = yawrate
                 flight.get_destination_offset.side_effect = [{"x": -150, "y": 150}, {"x": 8, "y": 3}]
-                flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
                 with patch("routines.flight.sleep"):
                     FlightMixin.fsd_target_align(flight, None, close=50)
@@ -392,11 +467,10 @@ class JumpRetryTestCase(unittest.TestCase):
                 self.assertAlmostEqual(sent["PitchUpButton"], expected_pitch)
 
     def test_target_align_learns_the_step_size_after_an_overshoot(self):
-        flight = Mock()
+        flight = self.target_alignment_flight()
         flight.pitchrate = 5.0
         flight.yawrate = 3.0  # configured as sluggish, but the ship really moves 160 px per second of hold
         flight.get_destination_offset.side_effect = [{"x": 75, "y": 0}, {"x": -69, "y": 0}, {"x": 5, "y": 0}]
-        flight.jn.ship_state.return_value = {"status": "in_supercruise"}
 
         with patch("routines.flight.sleep"):
             FlightMixin.fsd_target_align(flight, None, close=50)
@@ -560,10 +634,13 @@ class JumpRetryTestCase(unittest.TestCase):
             self.assertIsNone(FlightMixin.measure_fsd_alignment(flight, None))
 
     def test_correction_pitches_up_proportionally_toward_compass_point(self):
-        flight = Mock()
-        flight.status.get_flag.return_value = False
-        flight.measure_fsd_alignment.return_value = (0.2, 11.0)
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise
+        flight.measure_fsd_alignment = Mock(return_value=(0.2, 11.0))
         flight.pitchrate = 33.0
+        flight.rollrate = 80.0
         flight.yawrate = 8.0
 
         self.assertTrue(FlightMixin.correct_fsd_alignment(flight, None))
@@ -575,10 +652,13 @@ class JumpRetryTestCase(unittest.TestCase):
         self.assertAlmostEqual(hold, 11.0 * 0.8 / 33.0)
 
     def test_correction_yaws_left_and_caps_hold_time(self):
-        flight = Mock()
-        flight.status.get_flag.return_value = False
-        flight.measure_fsd_alignment.return_value = (-20.0, 1.0)
+        flight = FlightMixin()
+        flight.keys = Mock()
+        flight.status = Mock()
+        flight.status.get_flag.side_effect = lambda flag: flag == FlagsSupercruise
+        flight.measure_fsd_alignment = Mock(return_value=(-20.0, 1.0))
         flight.pitchrate = 33.0
+        flight.rollrate = 80.0
         flight.yawrate = 8.0
 
         FlightMixin.correct_fsd_alignment(flight, None)
