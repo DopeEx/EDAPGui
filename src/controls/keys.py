@@ -37,11 +37,15 @@ class EDKeys(KeyBindings):
                     return
                 self._cond.wait(remaining)
 
+    @staticmethod
+    def activate_elite_for_input():
+        set_focus_elite_window()
+        sleep(0.05)
+
     def send_key(self, type, key):
         # Focus Elite window if configured
         if self.activate_window:
-            set_focus_elite_window()
-            sleep(0.05)
+            self.activate_elite_for_input()
 
         if type == "Up":
             release_key(key)
@@ -81,8 +85,7 @@ class EDKeys(KeyBindings):
 
             # Focus Elite window if configured.
             if self.activate_window:
-                set_focus_elite_window()
-                sleep(0.05)
+                self.activate_elite_for_input()
 
             if state == 1:
                 with self._cond:

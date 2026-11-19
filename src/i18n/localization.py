@@ -154,12 +154,15 @@ class LocalizationManager:
         warnings, self.warnings = self.warnings, []
         return warnings
 
+    def journal_language_code(self, journal_language: str | None) -> str | None:
+        return self._journal_languages.get((journal_language or "").strip().casefold())
+
     def resolve_language(self, selection: str, journal_language: str | None) -> str:
         if not isinstance(selection, str):
             self.warn(f"Invalid game language selection {selection!r}. Using English.")
             return "en"
         if selection == "auto":
-            code = self._journal_languages.get((journal_language or "").casefold())
+            code = self.journal_language_code(journal_language)
             if code is None:
                 self.warn(f"Game language {journal_language or '(not available)'!r} is not supported. Using English.")
                 return "en"

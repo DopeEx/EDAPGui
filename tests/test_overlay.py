@@ -1033,6 +1033,7 @@ class OverlayRenderingTests(unittest.TestCase):
                 with self.subTest(assist=flag, ending=ending):
                     autopilot = Autopilot.__new__(Autopilot)
                     autopilot.terminate = False
+                    autopilot._cockpit_capture_request = None
                     autopilot.refresh_game_language = Mock(return_value=True)
                     autopilot.gui_loaded = False
                     autopilot._sc_sco_active_loop_thread = Mock(is_alive=Mock(return_value=True))
@@ -1088,6 +1089,7 @@ class OverlayRenderingTests(unittest.TestCase):
     def test_discovery_scan_unexpected_error_is_reported_and_assist_is_finished(self):
         autopilot = Autopilot.__new__(Autopilot)
         autopilot.terminate = False
+        autopilot._cockpit_capture_request = None
         autopilot.refresh_game_language = Mock(return_value=True)
         autopilot.gui_loaded = False
         autopilot._sc_sco_active_loop_thread = Mock(is_alive=Mock(return_value=True))
@@ -1268,6 +1270,7 @@ class EngineLoopInterruptTests(unittest.TestCase):
             with self.subTest(language_ready=language_ready):
                 autopilot = Autopilot.__new__(Autopilot)
                 autopilot.terminate = False
+                autopilot._cockpit_capture_request = None
                 autopilot.refresh_game_language = Mock(return_value=language_ready)
                 autopilot._sc_sco_active_loop_thread = Mock(is_alive=Mock(return_value=True))
                 autopilot.gui_loaded = False

@@ -4,7 +4,7 @@ import queue
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, patch
 
 try:
     from vision.ocr import OCR  # noqa: F401
@@ -58,6 +58,29 @@ class StatusReportingTests(unittest.TestCase):
         self.autopilot.update_overlay.assert_not_called()
         self.window.status.configure.assert_not_called()
         self.window.log_msg.assert_called_once_with("Abbruch wegen Treibstoffmangel")
+
+    def test_screenshot_capture_publishes_active_status_until_success_or_failure(self):
+        self.autopilot.assist_is_enabled = Mock(return_value=False)
+        for error in (None, OSError("Disk full")):
+            with self.subTest(error=error):
+                self.autopilot._cockpit_capture_request = {}
+                self.autopilot.update_overlay.reset_mock()
+                self.window.status.reset_mock()
+
+                def capture(*_args):
+                    self.assertTrue(self.autopilot._cockpit_capture_running)
+                    self.assertEqual(self.autopilot.ap_state, "Capturing screenshot set")
+                    self.window.status.configure.assert_called_once_with(text="Capturing screenshot set")
+                    if error:
+                        raise error
+                    return "capture folder", {"frames": [], "skipped": [], "stopped": None}
+
+                with patch("core.autopilot.capture_cockpit", side_effect=capture):
+                    self.autopilot._run_cockpit_capture()
+                self.assertFalse(self.autopilot._cockpit_capture_running)
+                self.assertEqual(self.autopilot.ap_state, "Idle")
+                self.assertEqual(self.autopilot.update_overlay.call_count, 2)
+                self.window.status.configure.assert_called_with(text="Idle")
 
     def test_spoken_status_uses_the_same_status_route_without_duplicate_notification(self):
         self.autopilot.set_ap_status("Evading", speak=True)

@@ -265,6 +265,31 @@ Large images are scaled down to fit. You can move the windows; subsequent frames
 Resizing a CV window scales its images up or down while preserving their aspect ratios, including the last frame
 when recognition is idle. Only the display is resized; captures, matching and saved diagnostic images are unchanged.
 The Debug tab has four **CV Views** buttons: **Compass**, **Target**, **Occluded Target** and **HUD Messages**.
+
+In the right column below **Single Waypoint Assist**, **Capture Screenshot Set** records the forward cockpit
+view once at the start, then cycles through the left, right and lower role panels. It returns to the forward
+view without taking another screenshot. Start in the main ship cockpit with no assist running. For target-ring and
+compass screenshots, select a target ahead before starting. The capture does not select a target or start flight.
+Panel focus comes from the game status; the sequence does not require OCR to recognize the current tab.
+The capture uses the same game-window activation as **Activate Elite window for each key** without changing that
+setting. If Windows leaves EDFC in the foreground, switch to Elite Dangerous within five seconds of starting the set.
+While the set is running, the enabled overlay shows **Screenshot Capture** on the mode line and
+**Capturing screenshot set** on the status line if those lines are enabled. The previous status returns when the
+set finishes or stops. Keep **Overlay visible in captures** disabled for clean fixture images.
+The lower role panel briefly holds **UI Up** to return to the top before taking four shots (Suit, Ship, SRV and Crew).
+The left panel omits the fifth shot when its tab bar matches the starting view, recording the duplicate
+in the manifest without relying on OCR. Missing panels
+or interrupted sets are noted in the report.
+
+The PNGs and `manifest.json` stay under `user_data/debug/screenshot-sets/` by default. Display mode, HUD
+brightness and HUD color scheme are optional per-set inputs; unknown values are left unset. File names include
+the ship type and game language from the journal, when available, and the actual image resolution.
+Files prefixed `RENAME-BEFORE-FIXTURE__` are raw captures: review the actual view, complete any known metadata
+and rename to the fixture convention before copying useful images to the local test portfolio.
+If the local Copilot workspace skill is installed, `/import-screenshot-set` reviews the newest set by default;
+provide a set directory to review an older one. The import keeps the source set intact and reports which new
+fixtures have automated assertions and which are diagnostic context only. For verified recognition failures,
+the import offers a handoff to `/cv-tuning` to fix and rerun the failing assertions.
 A button opens or focuses its window; the title-bar X closes it, and the button opens it again.
 HUD Messages combines the message pre-check and OCR result in two separate display areas.
 Windows initially show "Waiting for recognition..." until the corresponding recognition step runs. There are no
