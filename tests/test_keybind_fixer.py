@@ -1,27 +1,37 @@
 """Tests for the keyboard layout handling and the keybinding fixer."""
 
 import difflib
+import io
 import shutil
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from controls.directinput import SCANCODE, key_name_for, scancode_for
+from fix_keybinds import load_configured_hotkeys
+from fix_keybinds import main as keybind_fixer_main
 from game.binds_files import active_binds_files, preset_names
 from game.keybind_fixer import (
     CONFLICT,
     GAP,
     HOTKEY,
+    NO_KEY_FOUND,
     REPLACE,
     UNKNOWN_KEY,
     BindsFile,
+    Note,
+    Plan,
+    _candidates,
+    _configured_hotkey_keys,
+    _normalized_key_name,
     apply_changes,
     build_plan,
     load_active_files,
     write_file,
 )
-from game.keybind_spec import REQUIRED_ACTIONS
+from game.keybind_spec import FALLBACK_KEYS, KEYBIND_FIXER_BLOCKED_KEYS, REQUIRED_ACTIONS
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bindings" / "Test.4.2.binds"
 
@@ -108,6 +118,21 @@ class PlanTestCase(unittest.TestCase):
         self.assertEqual(changes["SetSpeed100"].new, "Key_Numpad_Add")
         self.assertTrue(all(not change.combo[1] for change in plan.changes))
 
+    def test_modifier_fallback_is_used_when_all_unmodified_keys_conflict(self):
+        actions = {"SetSpeed100": (FREE_PRIMARY, FREE)}
+        unavailable = ("Key_F7", "Key_F8", "Key_F12")
+        actions.update(
+            {
+                f"Other{index}": (key(candidate), FREE)
+                for index, candidate in enumerate(FALLBACK_KEYS)
+                if candidate not in unavailable
+            }
+        )
+
+        change = changes_by_action(plan_for(make_file(actions)))["SetSpeed100"]
+
+        self.assertEqual(change.new, "Key_LeftShift+Key_Numpad_Add")
+
     def test_supercruise_cruise_speed_gets_its_own_key(self):
         plan = plan_for(make_file({"SetSpeed50": (FREE_PRIMARY, FREE), "SetSpeed75": (FREE_PRIMARY, FREE)}))
 
@@ -126,11 +151,30 @@ class PlanTestCase(unittest.TestCase):
 
     def test_edfc_hotkeys_are_never_proposed(self):
         plan = plan_for(make_file({}))
+        blocked = ("Key_End", "Key_Home", "Key_F7", "Key_F8", "Key_F12")
 
         for change in plan.changes:
-            self.assertNotIn(change.new, ("Key_End", "Key_Insert", "Key_PageUp", "Key_Home"))
+            self.assertNotIn(change.new, blocked)
         # The default of CycleNextPanel would be Key_E first, End is only its second choice
         self.assertEqual(changes_by_action(plan)["CycleNextPanel"].new, "Key_E")
+
+    def test_insert_is_not_reserved_as_an_edfc_hotkey(self):
+        file = make_file({"LandingGearToggle": (FREE_PRIMARY, FREE)})
+        blocked_keys = {_normalized_key_name(key_name) for key_name in KEYBIND_FIXER_BLOCKED_KEYS}
+        candidates = list(_candidates("LandingGearToggle", file, blocked_keys))
+
+        self.assertIn("Key_Insert", [file.describe(combo) for _, combo in candidates])
+        self.assertNotIn("Key_PageUp", KEYBIND_FIXER_BLOCKED_KEYS)
+
+    def test_configured_hotkey_key_is_not_proposed(self):
+        file = make_file({})
+        blocked_keys = _configured_hotkey_keys(("ctrl+f5, num 8",))
+        candidates = list(_candidates("SetSpeed100", file, blocked_keys))
+        candidate_names = [file.describe(combo) for _, combo in candidates]
+
+        self.assertNotIn("Key_F5", candidate_names)
+        self.assertNotIn("Key_Numpad_8", candidate_names)
+        self.assertIn("num8", blocked_keys)
 
     def test_existing_keys_are_left_alone(self):
         file = make_file({"YawLeftButton": (key("Key_Q"), FREE), "SetSpeedZero": (key("Key_F2"), FREE)})
@@ -236,6 +280,13 @@ class PlanTestCase(unittest.TestCase):
         self.assertNotIn("SetSpeedZero", changes_by_action(plan))
         self.assertNotIn("SetSpeed50", changes_by_action(plan))
 
+    def test_insert_and_page_up_are_not_reported_as_edfc_hotkeys(self):
+        file = make_file({"SetSpeedZero": (key("Key_Insert"), FREE), "SetSpeed50": (key("Key_PageUp"), FREE)})
+
+        plan = plan_for(file)
+
+        self.assertFalse(any(note.kind == HOTKEY for note in plan.notes))
+
     def test_each_change_is_planned_once_and_keys_do_not_clash(self):
         plan = plan_for(make_file({}))
 
@@ -261,6 +312,49 @@ class PlanTestCase(unittest.TestCase):
                 },
                 actions,
             )
+
+
+class ConfiguredHotkeysTestCase(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self.config = self.folder / "AP.json"
+
+    def test_missing_config_uses_application_defaults(self):
+        self.assertEqual(load_configured_hotkeys(self.config), ("home", "end"))
+
+    def test_reads_current_and_legacy_start_hotkeys(self):
+        self.config.write_text('{"HotKey_StartTravel": "ctrl+f5", "HotKey_StopAllAssists": "f6"}', encoding="utf-8")
+        self.assertEqual(load_configured_hotkeys(self.config), ("ctrl+f5", "f6"))
+
+        self.config.write_text('{"HotKey_StartFSD": "f9"}', encoding="utf-8")
+        self.assertEqual(load_configured_hotkeys(self.config), ("f9", "end"))
+
+    def test_invalid_config_is_reported(self):
+        self.config.write_text("[]", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            load_configured_hotkeys(self.config)
+
+
+class FixerCliTestCase(unittest.TestCase):
+    def test_notes_without_changes_do_not_report_everything_is_fine(self):
+        file = make_file({})
+        plan = Plan(notes=[Note(NO_KEY_FOUND, "SetSpeed100", "ship", file)])
+        output = io.StringIO()
+
+        with (
+            mock.patch("fix_keybinds.is_game_running", return_value=False),
+            mock.patch("fix_keybinds.load_active_files", return_value={"general": file, "ship": file}),
+            mock.patch("fix_keybinds.preset_names", return_value={"general": "Mine", "ship": "Mine"}),
+            mock.patch("fix_keybinds.load_configured_hotkeys", return_value=("home", "end")),
+            mock.patch("fix_keybinds.build_plan", return_value=plan),
+            redirect_stdout(output),
+        ):
+            result = keybind_fixer_main(["--lang", "de"])
+
+        self.assertEqual(result, 0)
+        self.assertIn("Keine Änderungen möglich.", output.getvalue())
+        self.assertNotIn("Alles in Ordnung", output.getvalue())
 
 
 class WriteTestCase(unittest.TestCase):

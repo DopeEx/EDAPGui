@@ -48,6 +48,9 @@ in **Options > Controls**. The action names in the first column are the names ED
 EDFC's own global hotkeys are separate from these game bindings. Their defaults are **Home** (start Travel
 Assist) and **End** (stop assists). Configure them in the ED Flight Control Settings tab and avoid assigning those same keys
 to Elite Dangerous actions.
+The keybind fixer will not propose the configured EDFC hotkey keys or its reserved keys **F7**, **F8** and **F12**.
+It tries unmodified preferred and fallback keys first, then tries those keys with **Shift**, **Control** or **Alt**
+if every unmodified option conflicts.
 
 ### Galaxy Map menu conflicts
 

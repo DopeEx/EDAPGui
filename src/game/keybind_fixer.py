@@ -14,6 +14,7 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 
 from controls.directinput import key_name_for, scancode_for
 from game.binds_files import active_binds_files
@@ -21,6 +22,8 @@ from game.keybind_defaults import DEFAULT_KEYS, SHARED_IN_DEFAULTS
 from game.keybind_spec import (
     EDFC_HOTKEYS,
     FALLBACK_KEYS,
+    FALLBACK_MODIFIERS,
+    KEYBIND_FIXER_BLOCKED_KEYS,
     PREFERRED_KEYS,
     REQUIRED_ACTIONS,
     is_galaxy_map_navigation_conflict,
@@ -186,24 +189,52 @@ def galaxy_map_navigation_conflicts(file: BindsFile) -> list[tuple[str, str, str
     return conflicts
 
 
-def _candidates(action: str, file: BindsFile):
+def _normalized_key_name(name: str) -> str:
+    """Normalize key names from the hotkey settings and .binds files for comparison."""
+    normalized = re.sub(r"[^a-z0-9]", "", name.casefold().removeprefix("key_"))
+    return normalized.replace("numpad", "num")
+
+
+def _configured_hotkey_keys(hotkeys: Iterable[str]) -> set[str]:
+    """Return the key names used by configured hotkeys, including the final key of each sequence step."""
+    keys = set()
+    for hotkey in hotkeys:
+        for step in hotkey.split(","):
+            key = step.rsplit("+", 1)[-1].strip()
+            normalized = _normalized_key_name(key)
+            if normalized:
+                keys.add(normalized)
+    return keys
+
+
+def _candidates(action: str, file: BindsFile, blocked_keys: set[str]):
     """Keys to try for an action, best first, as (source, combo)."""
-    sources = [("default", key, mods) for key, mods in DEFAULT_KEYS.get(action, ())]
-    sources += [("preferred", key, ()) for key in PREFERRED_KEYS.get(action, ())]
-    sources += [("fallback", key, ()) for key in FALLBACK_KEYS]
+    defaults = [("default", key, mods) for key, mods in DEFAULT_KEYS.get(action, ())]
+    preferred = [("preferred", key, ()) for key in PREFERRED_KEYS.get(action, ())]
+    fallback = [("fallback", key, ()) for key in FALLBACK_KEYS]
+    sources = defaults + preferred + fallback
+    sources += [
+        (source, key, (modifier,)) for source, key, _ in preferred + fallback for modifier in FALLBACK_MODIFIERS
+    ]
     for source, key, mods in sources:
         combo = (scancode_for(key), tuple(sorted(scancode_for(m) for m in mods)))
         name = file.key_name(combo)
-        if name is None or any(file.key_name((m, ())) is None for m in combo[1]) or name in EDFC_HOTKEYS:
+        if (
+            name is None
+            or any(file.key_name((m, ())) is None for m in combo[1])
+            or _normalized_key_name(name) in blocked_keys
+        ):
             continue
         yield source, combo
 
 
-def build_plan(files: dict[str, BindsFile]) -> Plan:
+def build_plan(files: dict[str, BindsFile], blocked_hotkeys: Iterable[str] = ()) -> Plan:
     """Compares the active .binds file of each category with what EDFC needs. Nothing is written."""
     plan = Plan()
     used = {id(file): file.keyboard_combos() for file in files.values()}
     order = list(REQUIRED_ACTIONS)
+    blocked_keys = {_normalized_key_name(key) for key in KEYBIND_FIXER_BLOCKED_KEYS}
+    blocked_keys.update(_configured_hotkey_keys(blocked_hotkeys))
 
     for action, category in REQUIRED_ACTIONS.items():
         file = files.get(category)
@@ -235,7 +266,9 @@ def build_plan(files: dict[str, BindsFile]) -> Plan:
             old = "" if free else slots[slot_name].describe()
             combo, partners = None, []
 
-        chosen = next(((s, c) for s, c in _candidates(action, file) if not _conflicts(taken, action, c)), None)
+        chosen = next(
+            ((s, c) for s, c in _candidates(action, file, blocked_keys) if not _conflicts(taken, action, c)), None
+        )
         if chosen is None:
             plan.notes.append(Note(NO_KEY_FOUND, action, category, file))
             continue

@@ -19,6 +19,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Commodity sales use the sell dialog's default maximum without quantity inputs when the request covers all units of that commodity in the hold, including **All**. Smaller fixed quantities remain individually selected, and progress still follows confirmed transactions.
 - Waypoint Assist starts with the same cockpit check and SYS 2 / ENG 4 / WEP 0 power setup as Travel Assist; an unconfirmed distribution shows a message and continues.
 - The default **Wait For Autodock** time after granted docking is now five minutes instead of four.
+- The keybinding fixer avoids configured EDFC hotkey keys and tries Shift, Ctrl, or Alt combinations when no unmodified suggestion is available. If issues remain but no repair can be proposed, it asks users to resolve them manually.
 
 ### Fixed
 
