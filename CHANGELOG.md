@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-19
+
 ### Added
 
 - Conservative supercruise loop recovery for Travel and Waypoint Assist reduces throttle to 25%, then 0%, when repeated course corrections make no confirmed progress. Stable realignment restores 50%; continued confirmed lack of progress stops the assist with a warning, while disengage detection retains priority. **Set Speed to 25%** is now required and can be added with `fix_keybinds.bat`.
