@@ -263,8 +263,10 @@ The assist matches the requested ID to the current market, then checks the game'
 name and whether the dialog is buying or selling before submitting a trade. An English catalogue fallback is only
 a display fallback; it never replaces the current market's identity or name.
 It then waits for the game's transaction confirmation before reducing the remaining quantity.
-If a dialog cannot be read, it may close and reopen station services and retry once.
-If the checks still fail, trading stops with a message.
+If the dialog clearly shows a different commodity (for example after the game missed a key press),
+the assist closes the dialog, moves the selection by the recognized row offset and re-verifies the
+new dialog before any trade. If a dialog cannot be read, it may close and reopen station services
+and retry once. If the checks still fail, trading stops with a message.
 
 Requested trading also stops if market services or cargo information cannot be read.
 The route does not guarantee that a market exists or that the station trades your chosen goods.

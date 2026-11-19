@@ -26,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Navigation station-name OCR removes tall symbols and separated compact leading icons, preventing false extra characters and preserving spaced numeric suffixes.
 - Station searches continue past different rows with identical names, such as resource extraction sites, instead of treating the repeated title as the end of the list.
 - Supercruise station approaches hold 50% throttle until the target ring is acquired and centered before cruising at 75%. If the ring is lost while clearly off course, the assist stops waiting for the exit prompt and realigns instead.
+- A trade dialog that clearly shows a different commodity (for example after the game missed a key press) is closed and the selection corrected by the recognized row offset, re-verifying the new dialog before any trade.
 - Dim blue supercruise disengage lettering now passes the message pre-check instead of leaving only its brighter frame detectable and preventing OCR from starting.
 
 ## [2.1.0] - 2026-11-17

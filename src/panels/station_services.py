@@ -181,6 +181,8 @@ class EDStationServicesInShip:
         title_key = "STN_SVCS_SELL_COMMODITY" if selling else "STN_SVCS_BUY_COMMODITY"
         titles = [normalize_text(value) for value in self.locale.all_values(title_key) if value != "?"]
         matched = bool(expected) and title in titles and actual == expected
+        # Remember the commodity shown in a mismatched dialog so the cursor offset can be corrected.
+        self._last_dialog_commodity = actual if (not matched and title in titles and actual) else None
         if logger.isEnabledFor(logging.DEBUG):
             self._trade_debug_images = (title_image.copy(), name_image.copy()) if not matched else None
         logger.debug(
@@ -216,6 +218,42 @@ class EDStationServicesInShip:
                     "trade-dialog", "unconfirmed", {"title": images[0], "name": images[1], "later-dialog": context}
                 )
             self._trade_debug_images = None
+        return False
+
+    def correct_trade_selection(self, keys, items: list, expected_index: int, name: str, selling: bool) -> bool:
+        """Re-align the market cursor after an unconfirmed trade dialog.
+
+        Uses the commodity recognized in the mismatched dialog to compute the cursor
+        offset (e.g. after a game-side dropped key press), closes the dialog, moves the
+        cursor by the difference and re-verifies the new dialog via OCR. Never trades
+        without a confirmed dialog.
+        """
+        for _ in range(2):
+            recognized = getattr(self, "_last_dialog_commodity", None)
+            if not recognized:
+                return False
+            positions = [
+                i for i, item in enumerate(items) if normalize_text(str(item.get("Name_Localised", ""))) == recognized
+            ]
+            if len(positions) != 1 or positions[0] == expected_index:
+                logger.debug(
+                    "Trade selection correction not possible: recognized=%r positions=%s expected_index=%s",
+                    recognized,
+                    positions,
+                    expected_index,
+                )
+                return False
+            delta = expected_index - positions[0]
+            logger.info(f"Correcting trade selection by {delta:+d} row(s): recognized {recognized!r}.")
+            keys.send("UI_Back")  # close the mismatched dialog
+            if not self.wait_for_market_list(selling):
+                return False
+            keys.send("UI_Down" if delta > 0 else "UI_Up", hold=0.05, repeat=abs(delta))
+            sleep(0.5)
+            keys.send("UI_Select")
+            sleep(0.5)
+            if self.confirm_trade_dialog(name, selling):
+                return True
         return False
 
     def buy_commodity(self, keys, commodity_id: str, qty: int, free_cargo: int) -> tuple[bool, int]:
@@ -270,7 +308,9 @@ class EDStationServicesInShip:
             keys.send("UI_Select")  # Select that commodity
 
             sleep(0.5)  # give time to popup
-            if not self.confirm_trade_dialog(name, selling=False):
+            if not self.confirm_trade_dialog(name, selling=False) and not self.correct_trade_selection(
+                keys, buyable_items, index, name, selling=False
+            ):
                 raise TradeDialogUnconfirmedError(name)
             keys.send("UI_Up", repeat=2)  # go up to quantity to buy (may not default to this)
             # Log the planned quantity
@@ -363,7 +403,9 @@ class EDStationServicesInShip:
             keys.send("UI_Select")  # Select that commodity
 
             sleep(0.5)  # give time for popup
-            if not self.confirm_trade_dialog(name, selling=True):
+            if not self.confirm_trade_dialog(name, selling=True) and not self.correct_trade_selection(
+                keys, sellable_items, index, name, selling=True
+            ):
                 raise TradeDialogUnconfirmedError(name)
             keys.send("UI_Up", repeat=2)  # make sure at top
 
