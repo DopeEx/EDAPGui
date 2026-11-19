@@ -948,7 +948,8 @@ class APGui:
         if not self.WP_A_running:
             mb = messagebox.askokcancel(
                 "Waypoint List Reset",
-                "Reset route progress and remaining commodity quantities? Waypoint Assist will start again from the first point.",
+                "Reset route progress, repeat count and remaining commodity quantities? "
+                "Waypoint Assist will start again from the first point.",
             )
             if mb:
                 if not self.ed_ap.waypoint.mark_all_waypoints_not_complete():

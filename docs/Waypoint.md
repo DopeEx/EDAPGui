@@ -81,8 +81,9 @@ Duplicates copy the destination, options and trade lists, not the original stop'
 - **Active:** Click the checkbox in a row to include or exclude that stop. You can also select the row and press
   **Space**. An inactive stop is shown as **Disabled** and skipped. Save the route after changing this setting.
 - **Repeat route:** After the last active stop, start again at the first one with the original trade quantities.
-  Repetition continues until you stop the assist; a fixed number of repetitions is not currently available.
-  Keep an eye on cargo space, credits and stock.
+  **Runs** counts complete route traversals, including the first: `3` means three runs total. Enter `0` for
+  unlimited runs. With **Repeat route** off, the route runs once regardless of this value. Keep an eye on cargo
+  space, credits and stock.
 
 An empty route or a route with no active stops cannot start.
 Editing, loading, saving and resetting are locked while Waypoint Assist is running or still stopping.
@@ -216,6 +217,8 @@ The route file remains **v2**. `BuyCommodities` and `SellCommodities` are ordere
 commodity IDs, for example `"BuyCommodities": {"128049152": 20, "128049154": 10}`. The editor order is the trade
 order; do not alphabetically sort these keys when editing JSON. See [language packs](Localization.md) to contribute
 additional recognition texts and commodity names without changing Python code.
+`Repeat` enables repetition; `RepeatLimit` is `null` for unlimited runs or a positive integer for the total number of
+complete runs. The limit is ignored when `Repeat` is `false`.
 
 ### Trade order and quantities
 
@@ -310,7 +313,8 @@ EDFC reads the pasted text; it does not access the website or refresh market inf
    station-distance sections. Choose **Preview**.
 4. Review the destinations and Buy/Sell actions. Select each commodity, enter a quantity from **1 to 9998**
    and press **Set**. Ctrl/Shift lets you select several commodities to give them the same quantity.
-5. If wanted, enable **Repeat route**. A round-trip result does not enable repetition automatically.
+5. If wanted, enable **Repeat route** and set **Runs** to the total number of route runs, or `0` for unlimited.
+   A round-trip result does not enable repetition automatically.
 6. Choose **Import draft**, review the waypoints and save.
 
 The quantity you enter applies to both ends of that commodity's trade.
@@ -367,7 +371,8 @@ Review the whole imported route, especially if REPEAT was previously in the midd
 The list shows **Pending**, **Done** or **Disabled**, along with remaining trade quantities.
 For an unsaved route, quantities shown are the planned values, not the active run's remaining requests.
 
-Completed stops and remaining quantities are saved separately from the route.
+Completed stops, remaining quantities and the number of completed route runs are saved separately from the route.
+The run count survives an application restart. Resetting progress or saving route edits starts the count over.
 Remaining quantities use commodity IDs as well. Name-based progress from earlier local test files is not reused
 as if it belonged to the new ID-based route.
 After restarting ED Flight Control, the assist can continue unfinished stops without deliberately repeating completed ones.

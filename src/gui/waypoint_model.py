@@ -112,11 +112,11 @@ class RouteDocument:
             or raw["version"] != 2
             or type(raw.get("Repeat")) is not bool
             or "RepeatLimit" not in raw
-            or raw["RepeatLimit"] is not None
+            or (raw["RepeatLimit"] is not None and (type(raw["RepeatLimit"]) is not int or raw["RepeatLimit"] < 1))
         ):
             raise ValueError(
                 "Expected the current v2 format. Use Import legacy JSON for older routes. "
-                "RepeatLimit currently supports only null."
+                "RepeatLimit must be null or a positive whole number."
             )
         entries = raw.get("waypoints")
         if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
@@ -124,6 +124,7 @@ class RouteDocument:
         document = cls()
         document.filename = filename.resolve()
         document.data["Repeat"] = raw["Repeat"]
+        document.data["RepeatLimit"] = raw["RepeatLimit"]
         if isinstance(raw.get("name"), str) and raw["name"].strip():
             document.data["name"] = raw["name"]
         else:
@@ -254,8 +255,13 @@ class RouteDocument:
             issues.extend(entry_issues(entry, index))
         if type(self.data.get("Repeat")) is not bool:
             issues.append(RouteIssue("error", None, "Repeat", "Repeat must be true or false."))
-        if "RepeatLimit" not in self.data or self.data["RepeatLimit"] is not None:
-            issues.append(RouteIssue("error", None, "RepeatLimit", "Limited repetition is not supported; use null."))
+        repeat_limit = self.data.get("RepeatLimit")
+        if "RepeatLimit" not in self.data or (
+            repeat_limit is not None and (type(repeat_limit) is not int or repeat_limit < 1)
+        ):
+            issues.append(
+                RouteIssue("error", None, "RepeatLimit", "RepeatLimit must be null or a positive whole number.")
+            )
         return issues
 
     def validate(self):
@@ -285,6 +291,7 @@ class RouteDocument:
                 previous_progress = json.load(file)
         fresh_progress = {
             "version": 1,
+            "completed_runs": 0,
             "waypoints": {
                 entry["Id"]: {
                     "completed": False,

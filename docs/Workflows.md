@@ -70,9 +70,9 @@ they are departure checks, not collision avoidance during travel.
    Trade requests use commodity IDs; their editor order is preserved and the current market supplies the localized
    name used for dialog confirmation. A change of display language does not change the requested goods.
 6. **Repeat route** restores the original quantities and makes all stops pending after the last active stop.
-   The route then starts again until stopped; a fixed repetition count is not available. Waypoint Assist
-   remains docked at the end of a non-repeating route and
-   undocks when the next travel operation requires it.
+   The route repeats until stopped when **Runs** is `0` (unlimited), or stops after the configured total
+   number of complete runs. Waypoint Assist remains docked at the end of a non-repeating or completed finite route
+   and undocks when the next travel operation requires it.
 
 For route editing, imports, trade options and troubleshooting, see the [Waypoint guide](Waypoint.md).
 The editor's **Plot to System/Station** buttons only select targets; they do not start travel or trading.
