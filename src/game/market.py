@@ -92,7 +92,7 @@ class MarketParser:
         self.last_mod_time = self.get_file_modified_time()
         return data
 
-    def get_sellable_items(self, cargo_parser) -> list | None:
+    def get_sellable_items(self, cargo_parser, *, probe_commodity: str | None = None) -> list | None:
         """Get a list of items that can be sold to the station.
         Will trigger a read of the json file.
         {
@@ -113,6 +113,7 @@ class MarketParser:
             "Rare": false
         }
         @param cargo_parser: Current cargo to check if rare or demand=1 items exist in hold.
+        @param probe_commodity: Tentatively include this row for a verified dialog probe, not as proof of cargo.
         @return: A list of commodities that can be sold.
         """
         data = self.get_market_data()
@@ -127,7 +128,10 @@ class MarketParser:
                 x["Consumer"]
                 or (
                     (x["Demand"] > 0 or x["Rare"])
-                    and (cargo_parser.get_item_by_commodity_id(str(x.get("id", ""))) or {}).get("Count", 0) > 0
+                    and (
+                        str(x.get("id", "")) == probe_commodity
+                        or (cargo_parser.get_item_by_commodity_id(str(x.get("id", ""))) or {}).get("Count", 0) > 0
+                    )
                 )
             )
         ]

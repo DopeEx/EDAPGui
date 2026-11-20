@@ -400,6 +400,20 @@ class MarketListScreenshotTestCase(unittest.TestCase):
 
 @skipUnless(OCR is not None and TRADE_SCREENSHOTS, "PaddleOCR or local trade-dialog screenshots unavailable")
 class TradeDialogScreenshotTestCase(unittest.TestCase):
+    def test_sell_dialog_quantity_in_existing_polymers_fixtures(self):
+        engines = {}
+        for path in (path for path in TRADE_SCREENSHOTS if "trade-sell_polymere" in path.name):
+            with self.subTest(screenshot=path.name):
+                frame = load_screenshot(path)
+                services = EDStationServicesInShip.__new__(EDStationServicesInShip)
+                services.screen = ScreenshotScreen(frame)
+                services.ocr = screenshot_ocr(path, engines)
+                services.ocr.screen = services.screen
+                self.assertEqual(services.read_sell_quantity(), (6, 6))
+                services.screen = ScreenshotScreen(cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA))
+                services.ocr.screen = services.screen
+                self.assertEqual(services.read_sell_quantity(), (6, 6))
+
     def test_selected_commodity_and_direction_in_both_color_schemes(self):
         engines = {}
         for path in TRADE_SCREENSHOTS:

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from time import monotonic, sleep
+
+import cv2
 
 from core.logger import logger
 from game.market import MarketParser
@@ -333,7 +336,61 @@ class EDStationServicesInShip:
 
         return True, act_qty
 
-    def sell_commodity(self, keys, commodity_id: str, qty: int, cargo_parser) -> tuple[bool, int]:
+    def read_sell_quantity(self) -> tuple[int, int] | None:
+        """Read the selected and maximum quantities from the sell dialog's amount bar."""
+        region = reg_scale_for_station(
+            {"rect": [0.337, 0.345, 0.455, 0.393]}, self.screen.screen_width, self.screen.screen_height
+        )
+        gray = cv2.cvtColor(self.ocr.capture_region_pct(region), cv2.COLOR_BGR2GRAY)
+        enlarged = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        amounts = []
+        for image in (gray, enlarged):
+            words = self.ocr.image_simple_ocr(cv2.cvtColor(image, cv2.COLOR_GRAY2BGR))
+            text = " ".join(words or [])
+            logger.debug("Sell dialog quantity OCR: %r", text)
+            match = re.fullmatch(r"\s*([0-9]{1,5})\s*/\s*([0-9]{1,5})\s*", text)
+            if match is None:
+                return None
+            selected, maximum = map(int, match.groups())
+            if selected > maximum:
+                return None
+            amounts.append((selected, maximum))
+        return amounts[0] if amounts[0] == amounts[1] else None
+
+    def _check_sell_quantity(self, name: str) -> tuple[int, int] | None:
+        first = self.read_sell_quantity()
+        if first is None or not self.trade_dialog_matches(name, selling=True):
+            return None
+        return first if first == self.read_sell_quantity() else None
+
+    def _submit_verified_probe(self, keys, name: str, qty: int, cargo_total: int) -> tuple[bool, int]:
+        reading = self._check_sell_quantity(name)
+        if reading is None or reading[1] > cargo_total:
+            raise TradeDialogUnconfirmedError(name)
+        selected, maximum = reading
+        if maximum == 0:
+            keys.send("UI_Back")
+            return self.wait_for_market_list(selling=True), 0
+
+        quantity = maximum if qty >= 9999 else min(qty, maximum)
+        keys.send("UI_Up", repeat=2)
+        if qty < 9999 and qty < cargo_total:
+            keys.send("UI_Left", hold=4.0)
+            if self._check_sell_quantity(name) != (0, maximum):
+                raise TradeDialogUnconfirmedError(name)
+            keys.send("UI_Right", hold=0.04, repeat=quantity)
+        elif selected != quantity:
+            raise TradeDialogUnconfirmedError(name)
+        if self._check_sell_quantity(name) != (quantity, maximum):
+            raise TradeDialogUnconfirmedError(name)
+        keys.send("UI_Down")
+        keys.send("UI_Select")
+        sleep(0.5)
+        return True, quantity
+
+    def sell_commodity(
+        self, keys, commodity_id: str, qty: int, cargo_parser, *, recovery_cargo_total: int | None = None
+    ) -> tuple[bool, int]:
         """Sell qty of commodity. If qty >= 9999 then sell as much as possible.
         Assumed to be in the commodities sell screen in the list.
         @param keys: Keys class for sending keystrokes.
@@ -361,7 +418,11 @@ class EDStationServicesInShip:
         # Find commodity in market and return the index
         index = -1
         demand = 0
-        sellable_items = self.market_parser.get_sellable_items(cargo_parser)
+        sellable_items = (
+            self.market_parser.get_sellable_items(cargo_parser)
+            if recovery_cargo_total is None
+            else self.market_parser.get_sellable_items(cargo_parser, probe_commodity=commodity_id)
+        )
         if sellable_items is not None:
             for i, value in enumerate(sellable_items):
                 if str(value.get("id", "")) == commodity_id:
@@ -375,24 +436,15 @@ class EDStationServicesInShip:
             self.ap_ckb("log", f"Cannot select '{name}' for sale. Waypoint Assist stopped.")
             return False, 0
 
-        cargo_item = cargo_parser.get_item_by_commodity_id(commodity_id)
-        available = cargo_item["Count"] if cargo_item is not None else 0
-        if available <= 0:
-            logger.warning("Cannot sell commodity %s: no units in ship cargo.", commodity_id)
-            self.ap_ckb("log", f"No units of '{name}' are available for sale. Waypoint Assist stopped.")
-            return False, 0
-        act_qty = min(qty, available)
-        use_maximum = qty >= 9999 or qty >= available
-        logger.debug(
-            "Sell quantity selection: commodity=%s requested=%s available=%s planned=%s maximum=%s",
-            commodity_id,
-            qty,
-            available,
-            act_qty,
-            use_maximum,
-        )
-
-        if index > -1:
+        available = 0
+        if recovery_cargo_total is None:
+            cargo_item = cargo_parser.get_item_by_commodity_id(commodity_id)
+            available = cargo_item["Count"] if cargo_item is not None else 0
+            if available <= 0:
+                logger.warning("Cannot sell commodity %s: no units in ship cargo.", commodity_id)
+                self.ap_ckb("log", f"No units of '{name}' are available for sale. Waypoint Assist stopped.")
+                return False, 0
+        if index >= 0:
             keys.send("UI_Up", hold=3.0)  # go up to top of list
             keys.send(
                 "UI_Down",
@@ -407,6 +459,18 @@ class EDStationServicesInShip:
                 keys, sellable_items, index, name, selling=True
             ):
                 raise TradeDialogUnconfirmedError(name)
+            if recovery_cargo_total is not None:
+                return self._submit_verified_probe(keys, name, qty, recovery_cargo_total)
+            act_qty = min(qty, available)
+            use_maximum = qty >= 9999 or qty >= available
+            logger.debug(
+                "Sell quantity selection: commodity=%s requested=%s available=%s planned=%s maximum=%s",
+                commodity_id,
+                qty,
+                available,
+                act_qty,
+                use_maximum,
+            )
             keys.send("UI_Up", repeat=2)  # make sure at top
 
             # Log the planned quantity
@@ -424,7 +488,8 @@ class EDStationServicesInShip:
             sleep(0.5)
             # keys.send('UI_Back')  # Back to commodities list
 
-        return True, act_qty
+            return True, act_qty
+        return False, 0
 
 
 def dummy_cb(msg, body=None):

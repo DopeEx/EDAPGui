@@ -251,6 +251,16 @@ If a requested sale is not in your hold, it is skipped for that visit. If you ha
 available amount is sold. A skipped sale does not reduce its remaining request, but the stop can still finish
 after its other actions. The sale is tried again only on another visit, such as a repeat or deliberate reset.
 
+If the cargo inventory and the ship's reported cargo total disagree, the assist checks the requested commodity
+in the sell dialog instead of assuming it is absent. The dialog must confirm the commodity and a readable,
+consistent quantity before submission. A verified zero makes no sale; an unverified dialog stops the assist
+and leaves the sale pending. After the journal confirms a sale made this way, the assist waits up to ten
+seconds for a newer cargo inventory consistent with the new ship total before it makes another trade.
+A timeout stops the assist while keeping any journal-confirmed progress.
+In Debug mode, `Waypoint cargo recovery sync` records the outcome, expected total, and the last observed
+timestamps and totals. No status sample is taken during the wait until the inventory is newer and matches
+the expected total.
+
 ### Global shopping list
 
 Choose **Global shopping list** below the waypoint list and select **Enable this shopping list** to use it.
