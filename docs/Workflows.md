@@ -194,7 +194,8 @@ The left tab capture includes the System icon when the panel appears slightly fa
 Destination-name preprocessing separates leading icons from the rectified row border and removes their soft edges
 when there is a clear gap before the name. Shallow highlights use a smaller vertical inset so the name's lower
 strokes survive before the crop is padded for OCR. The shortest crops are converted to luminance so colored
-selection chevrons are less likely to be read as letters in the name.
+selection chevrons are less likely to be read as letters in the name. If OCR returns no name, it tries the same
+crop with inverted brightness; a still-unreadable row remains unconfirmed.
 
 Occluded-target detection checks white and beige dashed rings with their existing color-specific match thresholds.
 If the normal-size template does not match, it also checks templates 5% smaller and larger to tolerate slight

@@ -77,6 +77,8 @@ class NavigationFailureScreenshotTestCase(unittest.TestCase):
             ("07_navigation_arcadian-selected_de.png", 1920, 1080, "ARCADIAN"),
             ("09_navigation_wolf-works-selected_de.png", 1920, 1080, "WOLF WORKS"),
             ("19_navigation_ziegler-selected_asp_de.png", 1920, 1080, "ZIEGLER CHEMICAL"),
+            ("20_navigation_puppis-first-selected_panther_de.png", 1920, 1080, "PUPPIS SECTOR TOR B43 A"),
+            ("21_navigation_puppis-retry-selected_panther_de.png", 1920, 1080, "PUPPIS SECTOR TOR B43 A"),
         )
         if not any((NAVIGATION_FAILURES / name).is_file() for name, *_ in cases):
             self.skipTest("local navigation failure crops unavailable")

@@ -130,9 +130,13 @@ class EDNavigationPanel:
         if row.shape[0] < 32:
             # Small glyphs can blur together in OCR; preserve the text rather than correcting O/0 afterward.
             name_image = cv2.resize(name_image, None, fx=1.75, fy=1.75, interpolation=cv2.INTER_CUBIC)
+        text = normalize_text(" ".join(self.ocr.image_simple_ocr(name_image) or []))
+        if not text:
+            name_image = cv2.bitwise_not(name_image)
+            text = normalize_text(" ".join(self.ocr.image_simple_ocr(name_image) or []))
+            logger.debug("Navigation destination-name inverted OCR: name=%r", text)
         if debug:
             self._last_destination_name_image = name_image.copy()
-        text = normalize_text(" ".join(self.ocr.image_simple_ocr(name_image) or []))
         logger.debug("Navigation destination-name OCR: name=%r", text)
         if not text:
             self._save_recognition_failure("destination", image)
