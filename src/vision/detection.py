@@ -674,24 +674,14 @@ class DetectionMixin:
         filter_pixels = cv2.countNonZero(dst_image)
         roi_pixels = roi_width * roi_height
 
-        pt = maxLoc
-
         destination_width = scr_reg.reg["target"]["width"]
         destination_height = scr_reg.reg["target"]["height"]
 
         height, width = template.shape
-
-        # The target is aligned when the center of its circle is at the center of the screen. The template is only
-        # an arc, so use the circle center (anchor) instead of the center of the template.
-        anchor_x, anchor_y = scr_reg.templates.template["target"]["anchor"]
+        pt = maxLoc
         native = scr_reg.templates.template["target"]
-        if template is not native["image"]:
-            # Resize maps pixel centers, not pixel corners; use the actual rounded output dimensions.
-            anchor_x = (anchor_x + 0.5) * width / native["width"] - 0.5
-            anchor_y = (anchor_y + 0.5) * height / native["height"] - 0.5
-        region_left, region_top = scr_reg.reg["target"]["rect"][:2]
-        final_x = (pt[0] + anchor_x) - (scr_reg.screen.screen_width / 2 - region_left)
-        final_y = (scr_reg.screen.screen_height / 2 - region_top) - (pt[1] + anchor_y)
+        offset = self._target_offset(scr_reg, "target", pt, template)
+        final_x, final_y = offset["x"], offset["y"]
 
         if self.cv_frames.is_open("target"):
             dst_image_d = cv2.cvtColor(dst_image, cv2.COLOR_GRAY2RGB)
@@ -733,10 +723,31 @@ class DetectionMixin:
                     images["context"] = context.copy()
                 self._target_debug_capture = (captured[0][0], images, maxVal)
         else:
-            result = {"x": final_x, "y": final_y}
+            result = offset
             logger.debug(f"Target detection: {diagnostics}, offset x={final_x:.1f}, y={final_y:.1f}")
 
         return result
+
+    @staticmethod
+    def _target_offset(scr_reg, region_name, position, template):
+        native = scr_reg.templates.template["target"]
+        anchor_x, anchor_y = native["anchor"]
+        height, width = template.shape
+        if template is not native["image"]:
+            anchor_x = (anchor_x + 0.5) * width / native["width"] - 0.5
+            anchor_y = (anchor_y + 0.5) * height / native["height"] - 0.5
+        region_left, region_top = scr_reg.reg[region_name]["rect"][:2]
+        return {
+            "x": position[0] + anchor_x - (scr_reg.screen.screen_width / 2 - region_left),
+            "y": scr_reg.screen.screen_height / 2 - region_top - (position[1] + anchor_y),
+        }
+
+    def get_recovery_target_offset(self, scr_reg):
+        match = scr_reg.match_target_recovery()
+        if match is None:
+            return None
+        result, template = match
+        return self._target_offset(scr_reg, "target_recovery", result[3], template)
 
     def dump_target_debug(self):
         """Save the last failed target search when SC alignment reports a target loss."""

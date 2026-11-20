@@ -3,6 +3,7 @@
 import logging
 
 import cv2
+import numpy as np
 from numpy import add, array, cumsum, sum, zeros
 
 from core.logger import logger
@@ -144,6 +145,13 @@ class ScreenRegions:
             "filterCB": self.filter_by_color,
             "filter": self.orange_2_color_range,
         }  # also called destination
+        self.reg["target_recovery"] = {
+            "rect": [0.25, 0.10, 0.75, 0.75],
+            "width": 1,
+            "height": 1,
+            "filterCB": self.filter_by_color,
+            "filter": self.orange_2_color_range,
+        }
         self.reg["target_occluded"] = {
             "rect": [0.33, 0.24, 0.66, 0.70],
             "width": 1,
@@ -268,6 +276,59 @@ class ScreenRegions:
         if native_result[1] >= self.target_thresh and result[1] < native_result[1] + 0.03:
             result, best_template = native_result, template
         return image, result, best_template
+
+    def match_target_recovery(self):
+        """Find a unique target candidate in the expanded, recovery-only region."""
+        image = self.capture_region_filtered(self.screen, "target_recovery", inv_col=False)
+        native = self.templates.template["target"]["image"]
+        matches = []
+        for scale in (1.0, 0.95, 1.05, 1.10, 1.15):
+            template = (
+                native if scale == 1.0 else cv2.resize(native, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            )
+            if image.shape[0] < template.shape[0] or image.shape[1] < template.shape[1]:
+                continue
+            response = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+            matches.append((cv2.minMaxLoc(response), template, response))
+        if not matches:
+            return None
+        result, template, _ = max(matches, key=lambda match: match[0][1])
+        if result[1] < self.target_thresh:
+            logger.debug("Expanded target recovery: score=%.4f below threshold=%.4f.", result[1], self.target_thresh)
+            return None
+        x, y = result[3]
+        for _, candidate, response in matches:
+            h, w = candidate.shape
+            left, right = max(0, x - w * 3 // 4), min(response.shape[1], x + w * 3 // 4 + 1)
+            top, bottom = max(0, y - h * 3 // 4), min(response.shape[0], y + h * 3 // 4 + 1)
+            response[top:bottom, left:right] = -1
+            if cv2.minMaxLoc(response)[1] >= self.target_thresh:
+                logger.debug("Expanded target recovery rejected multiple matching candidates.")
+                return None
+        anchor_x, anchor_y = self.templates.template["target"]["anchor"]
+        native_height, native_width = native.shape
+        anchor_x = (anchor_x + 0.5) * template.shape[1] / native_width - 0.5
+        anchor_y = (anchor_y + 0.5) * template.shape[0] / native_height - 0.5
+        ys, xs = np.nonzero(template > 64)
+        radius = float(np.median(np.hypot(xs - anchor_x, ys - anchor_y)))
+        center_x, center_y = x + anchor_x, y + anchor_y
+        radial_margin = max(1, round(3 * self.screen.screen_height / 768))
+        covered = 0
+        for angle in np.linspace(-80, -35, 25):
+            radians = np.deg2rad(angle)
+            samples = [
+                (round(center_x + distance * np.cos(radians)), round(center_y + distance * np.sin(radians)))
+                for distance in range(round(radius) - radial_margin, round(radius) + radial_margin + 1)
+            ]
+            if any(px < 0 or py < 0 or px >= image.shape[1] or py >= image.shape[0] for px, py in samples):
+                logger.debug("Expanded target recovery rejected a clipped target.")
+                return None
+            covered += any(image[py, px] for px, py in samples)
+        if covered > 10:
+            logger.debug("Expanded target recovery rejected a closed or obscured target arc.")
+            return None
+        logger.debug("Expanded target recovery: unique match score=%.4f.", result[1])
+        return result, template
 
     def match_compass_multiscale(self):
         """Match the compass template at several scales, because the compass sphere differs in size between ship

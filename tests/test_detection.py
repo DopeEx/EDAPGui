@@ -654,6 +654,39 @@ class CompassTestCase(MatchingTestCase):
 
 
 class TargetTestCase(MatchingTestCase):
+    def test_expanded_recovery_detects_an_upper_target_but_rejects_ambiguous_targets(self):
+        for height in (1080, 2160):
+            templates = ImageTemplates(height)
+            template = templates.template["target"]["image"]
+            width = height * 16 // 9
+            color = cv2.cvtColor(np.uint8([[[20, 200, 240]]]), cv2.COLOR_HSV2BGR)[0, 0]
+            for ambiguous in (False, True):
+                with self.subTest(height=height, ambiguous=ambiguous):
+                    image = np.zeros((height, width, 3), np.uint8)
+                    y = int(height * 0.13)
+                    positions = [int(width * 0.35)]
+                    if ambiguous:
+                        positions.append(int(width * 0.57))
+                    for x in positions:
+                        area = image[y : y + template.shape[0], x : x + template.shape[1]]
+                        area[template > 128] = color
+                    regions = ScreenRegions(ScreenshotScreen(image), templates)
+                    detector = Detector()
+                    self.assertIsNone(detector.get_destination_offset(regions))
+                    offset = detector.get_recovery_target_offset(regions)
+                    if ambiguous:
+                        self.assertIsNone(offset)
+                    else:
+                        self.assertIsNotNone(offset)
+                        self.assertLess(offset["x"], 0)
+                        self.assertGreater(offset["y"], 0)
+
+    def test_expanded_recovery_does_not_accept_an_unselected_circle(self):
+        image = np.zeros((1080, 1920, 3), np.uint8)
+        cv2.circle(image, (800, 200), 50, (0, 200, 240), 2)
+        regions = ScreenRegions(ScreenshotScreen(image), ImageTemplates(1080))
+        self.assertIsNone(Detector().get_recovery_target_offset(regions))
+
     def test_incoming_unselected_contact_and_empty_planet_are_not_targets(self):
         folder = FIXTURES / "screenshots" / "diagnostics" / "incoming-20261116" / "target"
         available = sorted(folder.glob("*_evaluated.png"))

@@ -767,8 +767,8 @@ class JumpRetryTestCase(unittest.TestCase):
             ([{"z": 1, "yaw": -0.35, "pit": -25.0, "roll": -106}, centered], False),
         ):
             with self.subTest(readings=readings):
-                flight = Mock()
-                flight.get_nav_offset.side_effect = readings
+                flight = FlightMixin()
+                flight.get_nav_offset = Mock(side_effect=readings)
                 with patch("routines.flight.sleep"):
                     self.assertEqual(FlightMixin.compass_confirmed(flight, None, 10), expected)
 
@@ -860,6 +860,7 @@ class CompassAlignTestCase(unittest.TestCase):
         flight.jn.ship_state.return_value = {"status": "in_supercruise"}
         flight.read_nav_offset.side_effect = readings
         flight.nav_needs_reroll = FlightMixin.nav_needs_reroll
+        flight._compass_confirmation.return_value = (True, None)
         return flight
 
     def test_no_steering_while_the_compass_is_not_visible(self):
@@ -882,7 +883,7 @@ class CompassAlignTestCase(unittest.TestCase):
         for target in (None, {"x": 20, "y": -10}):
             with self.subTest(target=target):
                 flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
-                flight.compass_confirmed.return_value = False
+                flight._compass_confirmation.return_value = (False, None)
                 flight.get_destination_offset.return_value = target
                 with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
                     if target is None:
@@ -896,7 +897,7 @@ class CompassAlignTestCase(unittest.TestCase):
 
     def test_confirmed_compass_does_not_require_a_visible_target_ring(self):
         flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
-        flight.compass_confirmed.return_value = True
+        flight._compass_confirmation.return_value = (True, None)
         with patch("routines.flight.sleep"):
             self.assertFalse(FlightMixin.nav_align(flight, None))
         flight.get_destination_offset.assert_not_called()
@@ -918,7 +919,7 @@ class CompassAlignTestCase(unittest.TestCase):
                         {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
                     ]
                 )
-                flight.compass_confirmed.return_value = confirmed
+                flight._compass_confirmation.return_value = (confirmed, None)
                 flight.get_destination_offset.return_value = None
                 with patch("routines.flight.sleep"):
                     if confirmed:
@@ -930,7 +931,7 @@ class CompassAlignTestCase(unittest.TestCase):
                             self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
                         ):
                             FlightMixin.nav_align(flight, None)
-                flight.compass_confirmed.assert_called_once_with(None, 10)
+                flight._compass_confirmation.assert_called_once_with(None, 10)
                 flight.pitch_up.assert_called_once_with(20)
 
     def test_disengage_request_still_ends_compass_alignment_immediately(self):
@@ -944,10 +945,78 @@ class CompassAlignTestCase(unittest.TestCase):
     def test_alignment_is_available_after_a_docking_denial(self):
         flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
         flight.jn.ship_state.return_value = {"status": "dockingdenied"}
-        flight.compass_confirmed.return_value = True
+        flight._compass_confirmation.return_value = (True, None)
         with patch("routines.flight.sleep"):
             FlightMixin.nav_align(flight, None)
-        flight.compass_confirmed.assert_called_once_with(None, 10)
+        flight._compass_confirmation.assert_called_once_with(None, 10)
+
+    def test_failed_confirmation_steers_from_the_actual_outside_reading(self):
+        flight = self.flight(
+            [
+                {"z": 1, "x": -0.15, "y": 0.16, "yaw": -8.97, "pit": 9.32, "roll": -43.88},
+                {"z": 1, "x": 0, "y": 0.2, "yaw": 0, "pit": 11.68, "roll": 0},
+                {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
+            ]
+        )
+        outside = {"z": 1, "x": -0.15, "y": 0.2, "yaw": -9.03, "pit": 11.68, "roll": -37.57}
+        flight._compass_confirmation.side_effect = [(False, outside), (True, None)]
+        with patch("routines.flight.sleep"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        flight.rotate_left.assert_called_once_with(37.57)
+        flight.pitch_up.assert_called_once_with(11.68)
+        flight.get_destination_offset.assert_not_called()
+
+    def test_lost_confirmation_never_steers_from_the_earlier_reading(self):
+        flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+        flight._compass_confirmation.return_value = (False, None)
+        flight.get_destination_offset.return_value = None
+        with (
+            patch("routines.flight.sleep"),
+            self.assertLogs("ed_log", level="WARNING"),
+            self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"),
+        ):
+            FlightMixin.nav_align(flight, None)
+        for maneuver in ("pitch_up", "pitch_down", "yaw_left", "yaw_right", "rotate_left", "rotate_right"):
+            getattr(flight, maneuver).assert_not_called()
+
+    def test_post_turn_confirmation_reading_is_used_for_the_next_attempt(self):
+        flight = self.flight(
+            [
+                {"z": 1, "x": 0, "y": 0.3, "yaw": 0, "pit": 20, "roll": 0},
+                {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
+                {"z": 1, "x": 0, "y": 0, "yaw": 0, "pit": 0, "roll": 0},
+            ],
+            tries=2,
+        )
+        outside = {"z": 1, "x": 0, "y": 0.2, "yaw": 0, "pit": 10, "roll": 0}
+        flight._compass_confirmation.side_effect = [(False, outside), (True, None)]
+        with patch("routines.flight.sleep"):
+            self.assertFalse(FlightMixin.nav_align(flight, None))
+        self.assertEqual(flight.pitch_up.call_args_list, [call(20), call(10)])
+
+    def test_expanded_recovery_is_attempted_only_once_per_assist(self):
+        flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}] * 2)
+        flight._compass_confirmation.return_value = (False, None)
+        flight.get_destination_offset.return_value = None
+        flight._recover_expanded_target.return_value = ScTargetAlignReturn.Lost
+        flight._expanded_target_recovery_attempted = False
+        with patch("routines.flight.sleep"), self.assertLogs("ed_log", level="WARNING"):
+            for _ in range(2):
+                with self.assertRaisesRegex(RuntimeError, "target alignment unconfirmed"):
+                    FlightMixin.nav_align(flight, None, allow_target_recovery=True)
+        flight._recover_expanded_target.assert_called_once_with(None, False)
+
+    def test_expanded_recovery_result_is_propagated(self):
+        for result, expected in ((ScTargetAlignReturn.Found, False), (ScTargetAlignReturn.Disengage, True)):
+            with self.subTest(result=result):
+                flight = self.flight([{"z": 1, "yaw": 0, "pit": 0}])
+                flight._compass_confirmation.return_value = (False, None)
+                flight.get_destination_offset.return_value = None
+                flight._recover_expanded_target.return_value = result
+                flight._expanded_target_recovery_attempted = False
+                with patch("routines.flight.sleep"):
+                    self.assertEqual(FlightMixin.nav_align(flight, None, allow_target_recovery=True), expected)
+                flight.keys.send.assert_not_called()
 
     def test_lost_nav_point_stops_the_maneuver_instead_of_guessing(self):
         flight = self.flight(
@@ -1015,6 +1084,130 @@ class CompassAlignTestCase(unittest.TestCase):
             self.assertIsNone(FlightMixin.read_nav_offset(flight, None))
 
         self.assertEqual(flight.get_nav_offset.call_count, 4)
+
+
+class ExpandedTargetRecoveryTestCase(unittest.TestCase):
+    def setUp(self):
+        self.flight = Mock()
+        self.flight.jn.ship_state.return_value = {"status": "in_supercruise"}
+        self.flight.status.get_flag.return_value = False
+        self.flight.status.get_cleaned_data.return_value = {
+            "Destination_System": 1,
+            "Destination_Body": 20,
+            "Destination_Name": "So-yeon City",
+        }
+        self.flight.sc_disengage_label_up.return_value = False
+        self.flight.try_sc_disengage.return_value = False
+        self.flight.get_nav_offset.return_value = {"z": 1, "x": -0.15, "y": 0.2}
+        self.regions = Mock()
+        self.regions.screen.screen_width = 1920
+        self.regions.screen.screen_height = 1080
+
+    def recover(self, abort_on_disengage=False):
+        with patch("routines.flight.sleep"):
+            return FlightMixin._recover_expanded_target(self.flight, self.regions, abort_on_disengage)
+
+    def test_confirmed_target_is_steered_until_normal_search_finds_same_ring(self):
+        first = {"x": -100, "y": 180}
+        after = {"x": -100, "y": 100}
+        self.flight.get_recovery_target_offset.side_effect = [first, first, after, after]
+        self.flight.get_destination_offset.side_effect = [None, after]
+
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Found)
+
+        self.flight.keys.send.assert_called_once_with("PitchUpButton", hold=0.1)
+        self.assertEqual(self.flight.get_destination_offset.call_count, 2)
+
+    def test_unreliable_target_or_compass_never_sends_a_turn(self):
+        for first, second, compass in (
+            (None, None, {"z": 1, "x": -0.1, "y": 0.2}),
+            ({"x": -100, "y": 180}, None, {"z": 1, "x": -0.1, "y": 0.2}),
+            ({"x": -100, "y": 180}, {"x": 100, "y": 180}, {"z": 1, "x": -0.1, "y": 0.2}),
+            ({"x": -100, "y": 180}, {"x": -100, "y": 180}, None),
+            ({"x": -100, "y": 180}, {"x": -100, "y": 180}, {"z": -1, "x": -0.1, "y": 0.2}),
+            ({"x": -100, "y": 180}, {"x": -100, "y": 180}, {"z": 1, "x": 0.3, "y": 0.2}),
+        ):
+            with self.subTest(first=first, second=second, compass=compass):
+                self.flight.reset_mock()
+                self.flight.get_recovery_target_offset.side_effect = [first, second]
+                self.flight.get_nav_offset.return_value = compass
+                self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+                self.flight.keys.send.assert_not_called()
+
+    def test_inconsistent_normal_candidate_is_not_followed(self):
+        candidate = {"x": -100, "y": 180}
+        self.flight.get_recovery_target_offset.return_value = candidate
+        self.flight.get_destination_offset.return_value = {"x": 100, "y": 180}
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.keys.send.assert_not_called()
+
+    def test_no_progress_stops_after_bounded_short_turns(self):
+        self.flight.get_recovery_target_offset.return_value = {"x": -100, "y": 180}
+        self.flight.get_destination_offset.return_value = None
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.assertEqual(self.flight.keys.send.call_args_list, [call("PitchUpButton", hold=0.1)] * 2)
+
+    def test_large_target_jump_after_turn_stops_instead_of_following_it(self):
+        first = {"x": -100, "y": 180}
+        different = {"x": -350, "y": 160}
+        self.flight.get_recovery_target_offset.side_effect = [first, first, different, different]
+        self.flight.get_destination_offset.return_value = None
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.keys.send.assert_called_once_with("PitchUpButton", hold=0.1)
+
+    def test_interdiction_and_disengage_preempt_turns(self):
+        self.flight.status.get_flag.return_value = True
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.status.get_flag.return_value = False
+        self.flight.jn.ship_state.return_value["under_attack"] = True
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.jn.ship_state.return_value["under_attack"] = False
+        self.flight.try_sc_disengage.return_value = True
+        self.assertEqual(self.recover(abort_on_disengage=True), ScTargetAlignReturn.Disengage)
+        self.flight.keys.send.assert_not_called()
+
+    def test_existing_supercruise_failsafe_preempts_recovery_turns(self):
+        self.flight.get_recovery_target_offset.return_value = {"x": -100, "y": 180}
+        self.flight._check_sc_loop_recovery.side_effect = EdapInterruptError("no progress")
+        with self.assertRaises(EdapInterruptError):
+            self.recover(abort_on_disengage=True)
+        self.flight.keys.send.assert_not_called()
+
+    def test_deadline_and_possible_exit_prompt_stop_without_steering(self):
+        with patch("routines.flight.time.monotonic", side_effect=[0, 30]):
+            self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.sc_disengage_label_up.return_value = True
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.keys.send.assert_not_called()
+
+    def test_target_change_before_turn_stops_recovery(self):
+        original = self.flight.status.get_cleaned_data.return_value
+        changed = dict(original, Destination_Name="Other Station")
+        self.flight.status.get_cleaned_data.side_effect = [original, original, changed]
+        self.flight.get_recovery_target_offset.return_value = {"x": -100, "y": 180}
+        self.flight.get_destination_offset.return_value = None
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.keys.send.assert_not_called()
+
+    def test_target_change_before_normal_handoff_is_not_accepted(self):
+        original = self.flight.status.get_cleaned_data.return_value
+        changed = dict(original, Destination_Name="Other Station")
+        self.flight.status.get_cleaned_data.side_effect = [original, original, changed]
+        candidate = {"x": -100, "y": 180}
+        self.flight.get_recovery_target_offset.return_value = candidate
+        self.flight.get_destination_offset.return_value = candidate
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.flight.keys.send.assert_not_called()
+
+    def test_turn_limit_stops_even_when_the_target_keeps_improving(self):
+        readings = []
+        for step in range(30):
+            reading = {"x": -100, "y": 200 - 2 * step}
+            readings.extend((reading, reading))
+        self.flight.get_recovery_target_offset.side_effect = readings
+        self.flight.get_destination_offset.return_value = None
+        self.assertEqual(self.recover(), ScTargetAlignReturn.Lost)
+        self.assertEqual(self.flight.keys.send.call_count, 30)
 
 
 class DockStatusTestCase(unittest.TestCase):

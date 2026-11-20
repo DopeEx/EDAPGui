@@ -160,6 +160,21 @@ class Detector(DetectionMixin):
     ocr = NoOcr()
 
 
+class TargetRecoveryScreenshotTestCase(unittest.TestCase):
+    def test_post_stop_target_above_normal_search_region(self):
+        path = SCREENSHOTS / "diagnostics" / "target" / "03_sc-target_above-roi-panther-20261120-poststop.png"
+        if not path.is_file():
+            self.skipTest("local post-stop target screenshot unavailable")
+        image = load_screenshot(path)
+        regions = ScreenRegions(ScreenshotScreen(image), ImageTemplates(image.shape[0]))
+        detector = Detector()
+        self.assertIsNone(detector.get_destination_offset(regions))
+        offset = detector.get_recovery_target_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertLess(offset["x"], 0)
+        self.assertGreater(offset["y"], 0)
+
+
 class CompassFailureScreenshotTestCase(unittest.TestCase):
     def test_panther_hollow_marker_over_cockpit_glare(self):
         path = SCREENSHOTS / "diagnostics" / "compass" / "01_compass-behind_panther-hull-glare-context.png"

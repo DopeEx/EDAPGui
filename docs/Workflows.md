@@ -235,8 +235,16 @@ low-saturation blob; multiple cores are treated as unknown. The existing white-m
 glare and rim cases where the marker touches other bright surfaces; its saturation limits are unchanged.
 
 Compass alignment requires repeated centered readings, including after the last steering attempt. If confirmation
-fails or the marker disappears, it can hand off to target-ring alignment only when the visible-ring detector
-independently finds a target. Otherwise it sets zero throttle, notifies the user and stops the assist.
+fails with a readable compass marker, the next bounded correction uses that reading instead of discarding it.
+If confirmation fails or the marker disappears, it can hand off to target-ring alignment only when the visible-ring
+detector independently finds a target. During Supercruise Assist only, one expanded target search can also attempt
+recovery before stopping. It requires a unique open target arc, two stable readings, an ahead compass agreeing
+with the target direction, and the same selected destination. It uses short bounded turns until the normal search
+recognizes the same ring, and stops on lost or contradictory readings, lack of progress, a target change, an
+interdiction, an attack, or its time and turn limits. Other alignment paths do not use the expanded search.
+If alignment remains unconfirmed, it sets zero throttle, notifies the user and stops the assist. In supercruise,
+zero throttle still leaves the ship moving at the game's minimum speed; the assist does not protect it from attack
+after stopping, so the pilot must take control.
 The return value of `nav_align()` still reports a requested supercruise exit, not alignment success.
 Normal-space station approaches retain their stricter compass confirmation before moving closer.
 
