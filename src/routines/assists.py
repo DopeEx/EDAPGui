@@ -360,6 +360,7 @@ class AssistsMixin:
     def sc_assist(self, scr_reg):
         self._sc_loop_recovery = None
         self._sc_loop_target = None
+        self._expanded_target_recovery_attempted = False
         worker = getattr(self, "_disengage_worker", None)
         if worker is None:
             worker = self._disengage_worker = DisengageWorker()
@@ -408,7 +409,7 @@ class AssistsMixin:
         # Align Nav to target
         self.set_ap_status("Align")
         self.keys.send("SetSpeed50")
-        self.nav_align(scr_reg)  # Compass Align
+        self.nav_align(scr_reg, allow_target_recovery=True)  # Compass Align
         self.set_ap_status(cruise_status)
 
         self.jn.ship_state()["interdicted"] = False
@@ -432,7 +433,7 @@ class AssistsMixin:
                             self._sc_loop_target = tuple(
                                 target[key] for key in ("Destination_System", "Destination_Body", "Destination_Name")
                             )
-                    if self.nav_align(scr_reg, abort_on_disengage=True):  # Compass Align
+                    if self.nav_align(scr_reg, abort_on_disengage=True, allow_target_recovery=True):  # Compass Align
                         break
 
                 elif align_res == ScTargetAlignReturn.Found:
@@ -460,7 +461,7 @@ class AssistsMixin:
                 self._sc_loop_recovery = None
                 # Continue journey after interdiction
                 self.keys.send("SetSpeed50")
-                self.nav_align(scr_reg)  # realign with station
+                self.nav_align(scr_reg, allow_target_recovery=True)  # realign with station
 
             # check for SC Disengage
             if self.try_sc_disengage(scr_reg):

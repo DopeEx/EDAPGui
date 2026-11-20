@@ -77,6 +77,8 @@ class NavigationFailureScreenshotTestCase(unittest.TestCase):
             ("07_navigation_arcadian-selected_de.png", 1920, 1080, "ARCADIAN"),
             ("09_navigation_wolf-works-selected_de.png", 1920, 1080, "WOLF WORKS"),
             ("19_navigation_ziegler-selected_asp_de.png", 1920, 1080, "ZIEGLER CHEMICAL"),
+            ("20_navigation_puppis-first-selected_panther_de.png", 1920, 1080, "PUPPIS SECTOR TOR B43 A"),
+            ("21_navigation_puppis-retry-selected_panther_de.png", 1920, 1080, "PUPPIS SECTOR TOR B43 A"),
         )
         if not any((NAVIGATION_FAILURES / name).is_file() for name, *_ in cases):
             self.skipTest("local navigation failure crops unavailable")
@@ -156,6 +158,21 @@ class Detector(DetectionMixin):
         self.cv_frames = CvFrames()
 
     ocr = NoOcr()
+
+
+class TargetRecoveryScreenshotTestCase(unittest.TestCase):
+    def test_post_stop_target_above_normal_search_region(self):
+        path = SCREENSHOTS / "diagnostics" / "target" / "03_sc-target_above-roi-panther-20261120-poststop.png"
+        if not path.is_file():
+            self.skipTest("local post-stop target screenshot unavailable")
+        image = load_screenshot(path)
+        regions = ScreenRegions(ScreenshotScreen(image), ImageTemplates(image.shape[0]))
+        detector = Detector()
+        self.assertIsNone(detector.get_destination_offset(regions))
+        offset = detector.get_recovery_target_offset(regions)
+        self.assertIsNotNone(offset)
+        self.assertLess(offset["x"], 0)
+        self.assertGreater(offset["y"], 0)
 
 
 class CompassFailureScreenshotTestCase(unittest.TestCase):
@@ -383,6 +400,20 @@ class MarketListScreenshotTestCase(unittest.TestCase):
 
 @skipUnless(OCR is not None and TRADE_SCREENSHOTS, "PaddleOCR or local trade-dialog screenshots unavailable")
 class TradeDialogScreenshotTestCase(unittest.TestCase):
+    def test_sell_dialog_quantity_in_existing_polymers_fixtures(self):
+        engines = {}
+        for path in (path for path in TRADE_SCREENSHOTS if "trade-sell_polymere" in path.name):
+            with self.subTest(screenshot=path.name):
+                frame = load_screenshot(path)
+                services = EDStationServicesInShip.__new__(EDStationServicesInShip)
+                services.screen = ScreenshotScreen(frame)
+                services.ocr = screenshot_ocr(path, engines)
+                services.ocr.screen = services.screen
+                self.assertEqual(services.read_sell_quantity(), (6, 6))
+                services.screen = ScreenshotScreen(cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA))
+                services.ocr.screen = services.screen
+                self.assertEqual(services.read_sell_quantity(), (6, 6))
+
     def test_selected_commodity_and_direction_in_both_color_schemes(self):
         engines = {}
         for path in TRADE_SCREENSHOTS:

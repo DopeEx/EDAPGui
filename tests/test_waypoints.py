@@ -856,8 +856,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
             "Enabled": True,
             "BuyCommodities": {"128049152": 2, "128049188": 2},
         }
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+        self._mock_cargo(2)
         with (
             mock.patch.object(self.wp, "_confirmed_trade", return_value=(True, 2)) as trade,
             mock.patch.object(self.wp, "save_waypoints", return_value=True),
@@ -933,11 +932,17 @@ class TradeConfirmationTestCase(unittest.TestCase):
         self.assertEqual(self.wp._confirmed_trade(self.ap, "MarketBuy", "128049197", 2, 16), (True, 2))
         self.assertEqual(self.ap.jn.market_transactions_since.call_count, 2)
 
+    def _mock_cargo(self, count=0):
+        self.wp.cargo_parser = mock.Mock()
+        item = {"Count": count}
+        self.wp.cargo_parser.get_cargo_data.return_value = {"timestamp": "old", "Inventory": [item] if count else []}
+        self.wp.cargo_parser.get_item_by_commodity_id.return_value = item if count else None
+        self.ap.status.get_cleaned_data.return_value = {"Cargo": count}
+
     def test_sell_is_confirmed_and_saved_before_next_input(self):
         self.wp.waypoints["1"]["BuyCommodities"] = {}
         self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 2}
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+        self._mock_cargo(2)
         self.event["event"] = "MarketSell"
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
         self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 0})
@@ -1014,8 +1019,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
     def test_failed_sell_confirmation_does_not_change_remaining_quantity(self):
         self.wp.waypoints["1"]["BuyCommodities"] = {}
         self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 2}
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+        self._mock_cargo(2)
         with mock.patch.object(self.wp, "_confirmed_trade", return_value=(False, 0)):
             self.assertFalse(self.wp.execute_trade(self.ap, "1"))
         self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 2})
@@ -1023,8 +1027,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
 
     def test_missing_cargo_skips_sale_but_still_buys_and_preserves_sell_request(self):
         self.wp.waypoints["1"]["SellCommodities"] = {"128049155": 3}
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = None
+        self._mock_cargo()
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
         self.ap.stn_svcs_in_ship.sell_commodity.assert_not_called()
         self.ap.stn_svcs_in_ship.buy_commodity.assert_called_once()
@@ -1034,8 +1037,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
     def test_sale_is_limited_to_cargo_and_decrements_only_confirmation(self):
         self.wp.waypoints["1"]["BuyCommodities"] = {}
         self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 5}
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+        self._mock_cargo(2)
         self.event["event"] = "MarketSell"
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
         self.ap.stn_svcs_in_ship.sell_commodity.assert_called_once_with(
@@ -1046,7 +1048,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
     def test_zero_cargo_skips_sale_without_confirmation_or_progress_change(self):
         self.wp.waypoints["1"]["BuyCommodities"] = {}
         self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 5}
-        self.wp.cargo_parser = mock.Mock()
+        self._mock_cargo()
         self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 0}
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
         self.ap.stn_svcs_in_ship.sell_commodity.assert_not_called()
@@ -1066,8 +1068,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
 
     def test_partial_sale_with_count_updates_disabled_preserves_definition(self):
         self.wp.waypoints["1"].update(BuyCommodities={}, SellCommodities={"128049197": 5}, UpdateCommodityCount=False)
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+        self._mock_cargo(2)
         self.event["event"] = "MarketSell"
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
         self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 5})
@@ -1081,8 +1082,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
                     BuyCommodities={"128049197": 2},
                     SellCommodities={"128049197": 2, "128049199": 1},
                 )
-                self.wp.cargo_parser = mock.Mock()
-                self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 2}
+                self._mock_cargo(2)
                 if isinstance(failure, Exception):
                     self.wp.cargo_parser.wait_for_quantity.side_effect = failure
                 else:
@@ -1098,8 +1098,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
 
     def test_two_sales_wait_for_cargo_between_confirmed_transactions(self):
         self.wp.waypoints["1"].update(BuyCommodities={}, SellCommodities={"128049197": 1, "128049199": 1})
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 1}
+        self._mock_cargo(1)
         events = []
         self.wp.cargo_parser.wait_for_quantity.side_effect = lambda key, expected: (
             events.append(("cargo", key, expected)) or True
@@ -1122,8 +1121,7 @@ class TradeConfirmationTestCase(unittest.TestCase):
 
     def test_sell_all_uses_actual_inventory_for_confirmation_limit(self):
         self.wp.waypoints["1"].update(BuyCommodities={}, SellCommodities={"128049197": 9999})
-        self.wp.cargo_parser = mock.Mock()
-        self.wp.cargo_parser.get_item_by_commodity_id.return_value = {"Count": 4}
+        self._mock_cargo(4)
         self.event.update(event="MarketSell", Count=4)
         self.ap.stn_svcs_in_ship.sell_commodity.return_value = (True, 4)
         self.assertTrue(self.wp.execute_trade(self.ap, "1"))
@@ -1131,6 +1129,83 @@ class TradeConfirmationTestCase(unittest.TestCase):
             self.ap.keys, "128049197", 4, self.wp.cargo_parser
         )
         self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 9995})
+
+    def test_stale_cargo_probe_refreshes_inventory_before_the_second_sale(self):
+        self.wp.waypoints["1"].update(BuyCommodities={}, SellCommodities={"128049197": 2, "128049199": 1})
+        self._mock_cargo()
+        cargo = self.wp.cargo_parser
+        old = {"timestamp": "2026-11-19T22:47:13Z", "Inventory": []}
+        new = {"timestamp": "2026-11-20T00:48:07Z", "Inventory": [{"Count": 1}]}
+        cargo.get_cargo_data.side_effect = [old, old, new, new]
+        cargo.get_item_by_commodity_id.return_value = {"Count": 1}
+        self.ap.status.get_cleaned_data.side_effect = [
+            {"Cargo": 3, "timestamp": "2026-11-20T00:48:04Z"},
+            {"Cargo": 1, "timestamp": "2026-11-20T00:48:07Z"},
+            {"Cargo": 1},
+        ]
+        self.event.update(event="MarketSell", Count=2)
+        self.ap.jn.market_transactions_since.side_effect = [[self.event], [{**self.event, "Type": "gold", "Count": 1}]]
+        self.ap.stn_svcs_in_ship.sell_commodity.side_effect = [(True, 2), (True, 1)]
+        with (
+            mock.patch("routines.waypoints.commodity_symbol", side_effect=["polymers", "gold"]),
+            self.assertLogs("ed_log", level="DEBUG") as logs,
+        ):
+            self.assertTrue(self.wp.execute_trade(self.ap, "1"))
+        self.assertIn("cargo inventory=0 cargo_timestamp=2026-11-19T22:47:13Z", "\n".join(logs.output))
+        self.assertIn("outcome=ready expected_total=1", "\n".join(logs.output))
+        self.assertIn("last_status_timestamp=2026-11-20T00:48:07Z last_status_total=1", "\n".join(logs.output))
+        self.ap.stn_svcs_in_ship.sell_commodity.assert_has_calls(
+            [
+                mock.call(self.ap.keys, "128049197", 2, cargo, recovery_cargo_total=3),
+                mock.call(self.ap.keys, "128049199", 1, cargo),
+            ]
+        )
+        self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 0, "128049199": 0})
+
+    def test_stale_cargo_probe_timeout_preserves_sale_and_blocks_further_trades(self):
+        self.wp.waypoints["1"]["SellCommodities"] = {"128049197": 5, "128049199": 1}
+        self._mock_cargo()
+        self.ap.status.get_cleaned_data.return_value = {"Cargo": 4}
+        self.event.update(event="MarketSell", Count=2)
+        with mock.patch.object(self.wp, "_wait_for_recovered_cargo", return_value=False) as wait:
+            self.assertFalse(self.wp.execute_trade(self.ap, "1"))
+        wait.assert_called_once_with(self.ap, "old", 2)
+        self.ap.stn_svcs_in_ship.sell_commodity.assert_called_once()
+        self.ap.stn_svcs_in_ship.buy_commodity.assert_not_called()
+        self.assertEqual(self.wp.waypoints["1"]["SellCommodities"], {"128049197": 3, "128049199": 1})
+
+    def test_cargo_sync_timeout_logs_stale_inventory_or_mismatched_status_once(self):
+        self._mock_cargo()
+        self.ap.status.get_cleaned_data.return_value = {"Cargo": 4, "timestamp": "2026-11-20T00:48:07Z"}
+        old = "2026-11-19T22:47:13Z"
+        for timestamp, inventory, status_fields in (
+            (old, [], "last_status_timestamp=None last_status_total=None"),
+            (
+                "2026-11-20T00:48:07Z",
+                [{"Count": 2}],
+                "last_status_timestamp=2026-11-20T00:48:07Z last_status_total=4",
+            ),
+        ):
+            with self.subTest(timestamp=timestamp):
+                self.wp.cargo_parser.get_cargo_data.return_value = {"timestamp": timestamp, "Inventory": inventory}
+                with (
+                    mock.patch("routines.waypoints.time.monotonic", side_effect=[0, 0, 1, 10]),
+                    self.assertLogs("ed_log", level="DEBUG") as logs,
+                ):
+                    self.assertFalse(self.wp._wait_for_recovered_cargo(self.ap, old, 2))
+                self.assertEqual(len(logs.output), 1)
+                self.assertIn(f"outcome=timeout expected_total=2 previous_cargo_timestamp={old}", logs.output[0])
+                self.assertIn(f"last_cargo_timestamp={timestamp}", logs.output[0])
+                self.assertIn(status_fields, logs.output[0])
+
+    def test_verified_zero_from_probe_does_not_wait_for_a_sale_event(self):
+        self.wp.waypoints["1"].update(BuyCommodities={}, SellCommodities={"128049197": 2})
+        self._mock_cargo()
+        self.ap.status.get_cleaned_data.return_value = {"Cargo": 4}
+        self.ap.stn_svcs_in_ship.sell_commodity.return_value = True, 0
+        self.assertTrue(self.wp.execute_trade(self.ap, "1"))
+        self.ap.jn.market_transactions_since.assert_not_called()
+        self.wp.save_waypoints.assert_not_called()
 
     def test_failed_global_confirmation_does_not_change_remaining_quantity(self):
         self.wp.waypoints["1"]["BuyCommodities"] = {}

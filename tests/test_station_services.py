@@ -40,6 +40,38 @@ class StationServicesTestCase(unittest.TestCase):
         return services
 
 
+class SellDialogRecoveryTestCase(unittest.TestCase):
+    def setUp(self):
+        self.services = StationServicesTestCase.make_services("en")
+        self.services.trade_dialog_matches = mock.Mock(return_value=True)
+
+    def test_partial_sale_checks_zero_and_exact_quantity_before_submit(self):
+        self.services.read_sell_quantity = mock.Mock(side_effect=[(6, 6), (6, 6), (0, 6), (0, 6), (2, 6), (2, 6)])
+        with mock.patch("panels.station_services.sleep"):
+            self.assertEqual(self.services._submit_verified_probe(self.services.keys, "Polymers", 2, 8), (True, 2))
+        self.assertEqual(self.services.keys.send.call_args_list[-2:], [mock.call("UI_Down"), mock.call("UI_Select")])
+
+    def test_unstable_or_wrong_amount_never_submits(self):
+        for readings in (
+            [(6, 6), (5, 6)],
+            [(9, 9), (9, 9)],
+            [(6, 6), (6, 6), (0, 6), (0, 6), (3, 6), (3, 6)],
+        ):
+            with self.subTest(readings=readings):
+                self.services.keys.reset_mock()
+                self.services.read_sell_quantity = mock.Mock(side_effect=readings)
+                with self.assertRaises(TradeDialogUnconfirmedError):
+                    self.services._submit_verified_probe(self.services.keys, "Polymers", 2, 8)
+                self.assertNotIn(mock.call("UI_Select"), self.services.keys.send.call_args_list)
+
+    def test_verified_zero_exits_dialog_without_submitting(self):
+        self.services.read_sell_quantity = mock.Mock(return_value=(0, 0))
+        self.services.wait_for_market_list = mock.Mock(return_value=True)
+        self.assertEqual(self.services._submit_verified_probe(self.services.keys, "Polymers", 9999, 8), (True, 0))
+        self.services.keys.send.assert_called_once_with("UI_Back")
+        self.services.wait_for_market_list.assert_called_once_with(selling=True)
+
+
 class MarketListSafetyTestCase(unittest.TestCase):
     def setUp(self):
         self.services = StationServicesTestCase.make_services("en")

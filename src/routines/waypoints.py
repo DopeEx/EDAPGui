@@ -579,6 +579,7 @@ class EDWayPoint:
         quantity,
         *args,
         recover_trade_dialog: Callable[[str, str], bool] | None = None,
+        recovery_cargo_total: int | None = None,
     ) -> tuple[bool, int]:
         if quantity <= 0:
             return True, 0
@@ -613,7 +614,14 @@ class EDWayPoint:
             market_id = market["MarketID"]
             cursor = ap.jn.market_transaction_cursor()
             try:
-                result, planned = operation(ap.keys, commodity_id, quantity, *args)
+                if event_type == "MarketSell" and recovery_cargo_total is not None:
+                    result, planned = ap.stn_svcs_in_ship.sell_commodity(
+                        ap.keys, commodity_id, quantity, *args, recovery_cargo_total=recovery_cargo_total
+                    )
+                    if result and planned == 0:
+                        return True, 0  # Verified zero in the requested sell dialog; nothing submitted.
+                else:
+                    result, planned = operation(ap.keys, commodity_id, quantity, *args)
             except TradeDialogUnconfirmedError:
                 logger.warning(
                     "Trade dialog was not confirmed: event=%s commodity=%r attempt=%s",
@@ -685,6 +693,34 @@ class EDWayPoint:
             )
             return False, 0
         return False, 0
+
+    def _wait_for_recovered_cargo(self, ap, previous_timestamp: str, expected_total: int) -> bool:
+        deadline = time.monotonic() + 10
+        ready = False
+        timestamp = inventory_total = None
+        status_data = {}
+        while time.monotonic() < deadline:
+            data = self.cargo_parser.get_cargo_data(force=True)
+            timestamp = data.get("timestamp")
+            inventory_total = sum(item["Count"] for item in data["Inventory"])
+            if isinstance(timestamp, str) and timestamp > previous_timestamp and inventory_total == expected_total:
+                status_data = ap.status.get_cleaned_data()
+                if status_data.get("Cargo") == expected_total:
+                    ready = True
+                    break
+            sleep(0.25)
+        logger.debug(
+            "Waypoint cargo recovery sync: outcome=%s expected_total=%s previous_cargo_timestamp=%s "
+            "last_cargo_timestamp=%s last_inventory_total=%s last_status_timestamp=%s last_status_total=%s",
+            "ready" if ready else "timeout",
+            expected_total,
+            previous_timestamp,
+            timestamp,
+            inventory_total,
+            status_data.get("timestamp"),
+            status_data.get("Cargo"),
+        )
+        return ready
 
     def execute_trade(self, ap, dest_key) -> bool:
         # Get trade commodities from waypoint
@@ -860,13 +896,23 @@ class EDWayPoint:
                     ap.ship_control.goto_cockpit_view(timeout=COCKPIT_VIEW_TIMEOUT)
                     return False
 
-                for i, key in enumerate(sell_commodities):
+                for key in sell_commodities:
                     if sell_commodities[key] <= 0:
                         continue
                     # Check if we have any of the item to sell
                     try:
-                        self.cargo_parser.get_cargo_data(force=True)
-                        cargo_item = self.cargo_parser.get_item_by_commodity_id(key)
+                        cargo_data = self.cargo_parser.get_cargo_data(force=True)
+                        inventory_total = sum(item["Count"] for item in cargo_data["Inventory"])
+                        status_data = ap.status.get_cleaned_data()
+                        status_total = status_data.get("Cargo")
+                        if (
+                            not isinstance(status_total, (int, float))
+                            or not 0 <= status_total <= cargo_capacity
+                            or status_total % 1
+                        ):
+                            raise ValueError(f"Invalid Status.json cargo total: {status_total!r}")
+                        recovery_total = int(status_total) if inventory_total != status_total else None
+                        cargo_item = self.cargo_parser.get_item_by_commodity_id(key) if recovery_total is None else None
                     except (OSError, ValueError) as error:
                         logger.warning(
                             "Waypoint sell cargo check failed: id=%s commodity=%r error=%s", dest_key, key, error
@@ -877,7 +923,7 @@ class EDWayPoint:
                         ap.ship_control.goto_cockpit_view(timeout=COCKPIT_VIEW_TIMEOUT)
                         return False
                     available = cargo_item["Count"] if cargo_item is not None else 0
-                    if available == 0:
+                    if recovery_total is None and available == 0:
                         logger.debug(
                             "Waypoint sell skipped: id=%s commodity=%r no cargo; remaining=%s",
                             dest_key,
@@ -885,7 +931,22 @@ class EDWayPoint:
                             sell_commodities[key],
                         )
                         continue
-                    quantity = available if sell_commodities[key] >= 9999 else min(sell_commodities[key], available)
+                    trade_options = {}
+                    if recovery_total is not None:
+                        logger.debug(
+                            "Waypoint sale: probing dialog for %s; cargo inventory=%s cargo_timestamp=%s "
+                            "status=%s status_timestamp=%s",
+                            key,
+                            inventory_total,
+                            cargo_data.get("timestamp"),
+                            recovery_total,
+                            status_data.get("timestamp"),
+                        )
+                        ap.ap_ckb("log", "Cargo data disagrees with ship status; checking the sell dialog.")
+                        quantity = sell_commodities[key]
+                        trade_options["recovery_cargo_total"] = recovery_total
+                    else:
+                        quantity = available if sell_commodities[key] >= 9999 else min(sell_commodities[key], available)
                     logger.debug(
                         "Waypoint sell cargo check: id=%s commodity=%r requested=%s available=%s planned=%s",
                         dest_key,
@@ -903,6 +964,7 @@ class EDWayPoint:
                         quantity,
                         self.cargo_parser,
                         recover_trade_dialog=recover_trade_dialog,
+                        **trade_options,
                     )
                     logger.debug(
                         "Waypoint sell result: id=%s commodity=%r requested=%s result=%s confirmed_qty=%s",
@@ -916,6 +978,9 @@ class EDWayPoint:
                     if not result:
                         ap.ship_control.goto_cockpit_view(timeout=COCKPIT_VIEW_TIMEOUT)
                         return False
+                    if recovery_total is not None and qty == 0:
+                        ap.ap_ckb("log", "The sell dialog shows zero units available. No sale was made.")
+                        continue
 
                     # Persist each confirmed transaction before sending more inputs.
                     if qty > 0 and self.waypoints[dest_key]["UpdateCommodityCount"]:
@@ -925,7 +990,12 @@ class EDWayPoint:
                             return False
 
                     try:
-                        cargo_ready = self.cargo_parser.wait_for_quantity(key, available - qty)
+                        if recovery_total is not None:
+                            cargo_ready = self._wait_for_recovered_cargo(
+                                ap, cargo_data.get("timestamp") or "", recovery_total - qty
+                            )
+                        else:
+                            cargo_ready = self.cargo_parser.wait_for_quantity(key, available - qty)
                     except (OSError, ValueError) as error:
                         logger.warning("Post-sale cargo synchronization failed: commodity_id=%s error=%s", key, error)
                         cargo_ready = False

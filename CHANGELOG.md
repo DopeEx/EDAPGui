@@ -6,6 +6,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Retry unreadable selected Navigation rows with inverted contrast so station searches do not stop on an empty OCR result.
+- Correct course when the compass confirmation detects a remaining offset. Supercruise Assist can also make one bounded attempt to reacquire a target ring outside its usual search area before stopping.
+- Waypoint Assist no longer assumes a commodity is missing when the cargo inventory disagrees with the ship's reported total. It checks the sell dialog before submitting and stops with the sale pending if it cannot verify the commodity or quantity.
+
 ## [2.2.0] - 2026-11-19
 
 ### Added

@@ -527,8 +527,9 @@ class ScAssistStatusTestCase(unittest.TestCase):
         assists.nav_align = FlightMixin.nav_align.__get__(assists)
         assists.config = {"NavAlignTries": 1}
         assists.read_nav_offset = Mock(return_value={"z": 1, "yaw": 0, "pit": 0})
-        assists.compass_confirmed = Mock(return_value=False)
+        assists._compass_confirmation = Mock(return_value=(False, None))
         assists.get_destination_offset = Mock(return_value=None)
+        assists._recover_expanded_target = Mock(return_value=ScTargetAlignReturn.Lost)
         assists.notify_user = Mock()
 
         with (
@@ -571,9 +572,9 @@ class ScAssistStatusTestCase(unittest.TestCase):
             timeline.mock_calls,
             [
                 call.throttle("SetSpeed50"),
-                call.compass(None),
+                call.compass(None, allow_target_recovery=True),
                 call.align(None),
-                call.compass(None, abort_on_disengage=True),
+                call.compass(None, abort_on_disengage=True, allow_target_recovery=True),
                 call.align(None),
                 call.throttle("SetSpeed75"),
                 call.align(None),
@@ -592,7 +593,7 @@ class ScAssistStatusTestCase(unittest.TestCase):
         self.run_sc_assist(assists)
 
         assists.wait_for_sc_disengage.assert_called_once_with(None, 10)
-        assists.nav_align.assert_called_once_with(None)
+        assists.nav_align.assert_called_once_with(None, allow_target_recovery=True)
         self.assertEqual(
             assists.keys.send.call_args_list, [call("SetSpeed50"), call("SetSpeed75"), call("SetSpeedZero")]
         )
@@ -621,13 +622,13 @@ class ScAssistStatusTestCase(unittest.TestCase):
             timeline.mock_calls,
             [
                 call.throttle("SetSpeed50"),
-                call.compass(None),
+                call.compass(None, allow_target_recovery=True),
                 call.align(None),
                 call.throttle("SetSpeed75"),
                 call.align(None),
                 call.wait(None, 10),
                 call.throttle("SetSpeed50"),
-                call.compass(None, abort_on_disengage=True),
+                call.compass(None, abort_on_disengage=True, allow_target_recovery=True),
                 call.align(None),
                 call.align(None),
                 call.throttle("SetSpeedZero"),
@@ -660,7 +661,7 @@ class ScAssistStatusTestCase(unittest.TestCase):
             return result
 
         def compass(_scr_reg, **kwargs):
-            if kwargs:
+            if kwargs.get("abort_on_disengage"):
                 self.assertIsNotNone(assists._sc_loop_recovery)
                 assists._sc_loop_recovery.stage = 2
             return False

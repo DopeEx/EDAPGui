@@ -13,6 +13,7 @@ from core.constants import (
     SCOOPABLE_STAR_CLASSES,
     Flags2FsdScoActive,
     FlagsAnalysisMode,
+    FlagsBeingInterdicted,
     FlagsDocked,
     FlagsFsdCharging,
     FlagsFsdJump,
@@ -55,6 +56,9 @@ NAV_ALIGN_LOST_DELAY = 0.5
 NAV_ALIGN_MAX_REROLLS = 2
 NAV_ALIGN_REROLL_YAW = 30
 NAV_ALIGN_CLOSE_DEG = 10
+TARGET_RECOVERY_STEPS = 30
+TARGET_RECOVERY_HOLD = 0.1
+TARGET_RECOVERY_TIMEOUT = 30.0
 
 SUPERCRUISE_START_TIMEOUT = 30.0
 SUPERCRUISE_ENTRY_TIMEOUT = 60.0
@@ -285,15 +289,20 @@ class FlightMixin:
             sleep(0.2)
         return False
 
-    def compass_confirmed(self, scr_reg, close) -> bool:
-        """Re-read the compass to confirm that the nav point is really ahead and centered."""
+    def _compass_confirmation(self, scr_reg, close):
+        """Return the confirmation result and the reading that prevented confirmation."""
         for _ in range(2):
             sleep(0.2)
             off = self.get_nav_offset(scr_reg)
             if off is None or off["z"] <= 0 or abs(off["yaw"]) >= close or abs(off["pit"]) >= close:
                 logger.debug(f"Compass align: confirmation reading {off} is not centered.")
-                return False
-        return True
+                return False, off
+        return True, None
+
+    def compass_confirmed(self, scr_reg, close) -> bool:
+        """Re-read the compass to confirm that the nav point is really ahead and centered."""
+        confirmed, _ = self._compass_confirmation(scr_reg, close)
+        return confirmed
 
     def read_nav_offset(self, scr_reg):
         """Read the compass nav point. When the compass or the nav point is not visible, wait and read again instead
@@ -313,7 +322,7 @@ class FlightMixin:
         back and forth. Rolling it to the vertical axis first lets the pitch bring it to the center."""
         return off["z"] > 0 and abs(off["yaw"]) > NAV_ALIGN_REROLL_YAW and close < abs(off["roll"]) < 180 - close
 
-    def nav_align(self, scr_reg, abort_on_disengage=False) -> bool:
+    def nav_align(self, scr_reg, abort_on_disengage=False, *, allow_target_recovery=False) -> bool:
         """Use the compass to find the nav point position.  Will then perform rotation and pitching
         to put the nav point in the middle of the compass, i.e. target right in front of us.
         With abort_on_disengage the alignment is cancelled as soon as the supercruise exit was requested,
@@ -335,12 +344,14 @@ class FlightMixin:
 
         # try multiple times to get aligned.  If the sun is shining on console, this it will be hard to match
         # the vehicle should be positioned with the sun below us via the sun_avoid() routine after a jump
+        pending_off = None
         for ii in range(self.config["NavAlignTries"]):
             if abort_on_disengage and self.try_sc_disengage(scr_reg):
                 return True
             if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
                 return False
-            off = read_offset()
+            off = pending_off if pending_off is not None else read_offset()
+            pending_off = None
             if off is None:
                 # Never steer without a reading: a guessed position turns the ship away from the target
                 logger.debug("Compass Align: compass or nav point not visible, compass steering stopped.")
@@ -349,10 +360,13 @@ class FlightMixin:
 
             # Check if we are close enough already; the nav point flickers, so the reading must be confirmed
             if abs(off["yaw"]) < close and abs(off["pit"]) < close:
-                if self.compass_confirmed(scr_reg, close):
+                confirmed, off = self._compass_confirmation(scr_reg, close)
+                if confirmed:
                     return False
-                logger.debug("Compass align: centered reading not confirmed, aligning again.")
-                continue
+                if off is None:
+                    logger.debug("Compass align: confirmation lost, reading again without steering.")
+                    continue
+                logger.debug("Compass align: correcting from the unconfirmed reading.")
 
             for reroll in range(NAV_ALIGN_MAX_REROLLS + 1):
                 # Roll if the nav point is not directly behind us.
@@ -391,7 +405,7 @@ class FlightMixin:
                     if abort_on_disengage and self.jn.ship_state()["status"] != "in_supercruise":
                         return False
                     # Calc pitch time based on nav point location
-                    if abs(off["pit"]) > close:
+                    if abs(off["pit"]) >= close:
                         if off["pit"] < 0:
                             self.pitch_down(abs(off["pit"]))
                         else:
@@ -415,7 +429,7 @@ class FlightMixin:
                 # Calc yaw time based on nav point location
                 if off is None:
                     break
-                if abs(off["yaw"]) > close:
+                if abs(off["yaw"]) >= close:
                     if off["yaw"] < 0:
                         self.yaw_left(abs(off["yaw"]))
                     else:
@@ -432,16 +446,122 @@ class FlightMixin:
                 continue
             sleep(0.1)
             logger.debug("final x:" + str(off["x"]) + " y:" + str(off["y"]))
-            if abs(off["yaw"]) < close and abs(off["pit"]) < close and self.compass_confirmed(scr_reg, close):
-                return False
+            if abs(off["yaw"]) < close and abs(off["pit"]) < close:
+                confirmed, pending_off = self._compass_confirmation(scr_reg, close)
+                if confirmed:
+                    return False
 
         if self.get_destination_offset(scr_reg) is not None:
             logger.warning("Compass alignment unconfirmed; continuing with the visible target ring.")
             return False
+        if allow_target_recovery and not getattr(self, "_expanded_target_recovery_attempted", False):
+            self._expanded_target_recovery_attempted = True
+            result = self._recover_expanded_target(scr_reg, abort_on_disengage)
+            if result == ScTargetAlignReturn.Found:
+                logger.info("Target recovered; continuing alignment.")
+                return False
+            if result == ScTargetAlignReturn.Disengage:
+                return True
         self.keys.send("SetSpeedZero")
         logger.warning("Compass alignment unconfirmed and no target ring detected. Flight assist stopped.")
         self.notify_user("Could not confirm target alignment. Flight assist stopped; take control of the ship.")
         raise RuntimeError("Flight assist stopped (target alignment unconfirmed)")
+
+    def _recover_expanded_target(self, scr_reg, abort_on_disengage):
+        """Recover one verified target into the normal search region with bounded short turns."""
+        width, height = scr_reg.screen.screen_width, scr_reg.screen.screen_height
+        tolerance_x, tolerance_y = width * 0.02, height * 0.02
+        previous = None
+        previous_axis = None
+        stalled = 0
+        target_keys = ("Destination_System", "Destination_Body", "Destination_Name")
+        status = self.status.get_cleaned_data()
+        target = tuple(status[key] for key in target_keys)
+        if not status["Destination_Name"] or status["Destination_Body"] == 0:
+            return ScTargetAlignReturn.Lost
+        deadline = time.monotonic() + TARGET_RECOVERY_TIMEOUT
+        for _ in range(TARGET_RECOVERY_STEPS):
+            ship = self.jn.ship_state()
+            status = self.status.get_cleaned_data()
+            if (
+                time.monotonic() >= deadline
+                or ship["status"] != "in_supercruise"
+                or ship.get("under_attack")
+                or self.status.get_flag(FlagsBeingInterdicted)
+                or tuple(status[key] for key in target_keys) != target
+            ):
+                logger.debug("Expanded target recovery stopped: supercruise or flight safety not confirmed.")
+                return ScTargetAlignReturn.Lost
+            if abort_on_disengage:
+                if self.try_sc_disengage(scr_reg):
+                    return ScTargetAlignReturn.Disengage
+            elif self.sc_disengage_label_up(scr_reg):
+                logger.debug("Expanded target recovery stopped: possible supercruise exit prompt.")
+                return ScTargetAlignReturn.Lost
+            first = self.get_recovery_target_offset(scr_reg)
+            if first is None:
+                return ScTargetAlignReturn.Lost
+            sleep(0.15)
+            off = self.get_recovery_target_offset(scr_reg)
+            compass = self.get_nav_offset(scr_reg)
+            if (
+                off is None
+                or compass is None
+                or compass["z"] <= 0
+                or abs(off["x"] - first["x"]) > tolerance_x
+                or abs(off["y"] - first["y"]) > tolerance_y
+            ):
+                logger.debug("Expanded target recovery stopped: target or compass not confirmed.")
+                return ScTargetAlignReturn.Lost
+            if abort_on_disengage:
+                self._check_sc_loop_recovery(compass, corrected=previous is not None)
+            for axis, tolerance in (("x", tolerance_x), ("y", tolerance_y)):
+                if abs(compass[axis]) > 0.05 and abs(off[axis]) > tolerance and compass[axis] * off[axis] < 0:
+                    logger.debug("Expanded target recovery stopped: target disagrees with compass on %s.", axis)
+                    return ScTargetAlignReturn.Lost
+            if previous is not None:
+                if abs(off["x"] - previous["x"]) > width * 0.08 or abs(off["y"] - previous["y"]) > height * 0.08:
+                    logger.debug("Expanded target recovery stopped: target moved unexpectedly.")
+                    return ScTargetAlignReturn.Lost
+                if abs(off[previous_axis]) >= abs(previous[previous_axis]) - 1:
+                    stalled += 1
+                    if stalled >= 2:
+                        logger.debug("Expanded target recovery stopped: target did not move toward the center.")
+                        return ScTargetAlignReturn.Lost
+                else:
+                    stalled = 0
+            normal = self.get_destination_offset(scr_reg)
+            status = self.status.get_cleaned_data()
+            ship = self.jn.ship_state()
+            if (
+                time.monotonic() >= deadline
+                or ship["status"] != "in_supercruise"
+                or ship.get("under_attack")
+                or self.status.get_flag(FlagsBeingInterdicted)
+                or tuple(status[key] for key in target_keys) != target
+            ):
+                return ScTargetAlignReturn.Lost
+            if abort_on_disengage:
+                if self.try_sc_disengage(scr_reg):
+                    return ScTargetAlignReturn.Disengage
+            elif self.sc_disengage_label_up(scr_reg):
+                return ScTargetAlignReturn.Lost
+            if normal is not None:
+                if abs(normal["x"] - off["x"]) <= tolerance_x and abs(normal["y"] - off["y"]) <= tolerance_y:
+                    return ScTargetAlignReturn.Found
+                logger.debug("Expanded target recovery stopped: normal and expanded detections disagree.")
+                return ScTargetAlignReturn.Lost
+            if abs(off["x"]) / width > abs(off["y"]) / height:
+                axis = "x"
+                key = "YawRightButton" if off["x"] > 0 else "YawLeftButton"
+            else:
+                axis = "y"
+                key = "PitchUpButton" if off["y"] > 0 else "PitchDownButton"
+            self.keys.send(key, hold=TARGET_RECOVERY_HOLD)
+            previous, previous_axis = off, axis
+            sleep(0.25)
+        logger.debug("Expanded target recovery stopped: turn limit reached.")
+        return ScTargetAlignReturn.Lost
 
     def fsd_target_align(self, scr_reg, close=50, allow_starting_hyperspace=False, proportional=False):
         """Coarse align to the target to support FSD jumping.

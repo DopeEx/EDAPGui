@@ -305,6 +305,32 @@ class DestinationNameImageTestCase(unittest.TestCase):
                 else:
                     np.testing.assert_array_equal(image, crop)
 
+    def test_unreadable_destination_retries_only_with_inverted_name_crop(self):
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = mock.Mock(screen_width=1920, screen_height=1080)
+        panel.ocr = mock.Mock()
+        panel.ocr.capture_region_pct.return_value = np.zeros((100, 1600, 3), np.uint8)
+        row = np.full((30, 766, 3), 207, dtype=np.uint8)
+        panel.ocr.solid_highlighted_items.return_value = [(row, 0, 0, 766, 30)]
+        panel.ocr.image_simple_ocr.side_effect = [[], ["PUPPIS SECTOR TO-R B4-3 A"]]
+
+        self.assertEqual(panel._selected_destination(), "PUPPIS SECTOR TOR B43 A")
+        first, inverted = [call.args[0] for call in panel.ocr.image_simple_ocr.call_args_list]
+        np.testing.assert_array_equal(inverted, cv2.bitwise_not(first))
+
+    def test_unreadable_inverted_destination_stays_unconfirmed(self):
+        panel = EDNavigationPanel.__new__(EDNavigationPanel)
+        panel.screen = mock.Mock(screen_width=1920, screen_height=1080)
+        panel.ocr = mock.Mock()
+        panel.ocr.capture_region_pct.return_value = np.zeros((100, 1600, 3), np.uint8)
+        row = np.full((30, 766, 3), 207, dtype=np.uint8)
+        panel.ocr.solid_highlighted_items.return_value = [(row, 0, 0, 766, 30)]
+        panel.ocr.image_simple_ocr.return_value = []
+        with mock.patch.object(panel, "_save_recognition_failure"):
+            self.assertEqual(panel._selected_destination(), "")
+        self.assertIsNone(panel._destination_position)
+        self.assertEqual(panel.ocr.image_simple_ocr.call_count, 2)
+
     def test_short_name_crop_gets_vertical_context_for_ocr(self):
         row = np.full((30, 766, 3), (200, 200, 200), np.uint8)
         cv2.putText(row, "OHM CITY", (100, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (20, 20, 20), 1, cv2.LINE_AA)
